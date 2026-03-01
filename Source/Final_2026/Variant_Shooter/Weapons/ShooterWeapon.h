@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "ShooterWeaponHolder.h"
+#include "ShooterWeaponTypes.h"
 #include "Animation/AnimInstance.h"
 #include "ShooterWeapon.generated.h"
 
@@ -13,6 +14,7 @@ class AShooterProjectile;
 class USkeletalMeshComponent;
 class UAnimMontage;
 class UAnimInstance;
+class UDamageType;
 
 /**
  *  Base class for a simple first person shooter weapon
@@ -48,6 +50,25 @@ protected:
 
 	/** Number of bullets in the current magazine */
 	int32 CurrentBullets = 0;
+
+	/** Maximum bullets that can be carried for this weapon, including current clip and reserve. */
+	UPROPERTY(EditAnywhere, Category="Ammo", meta = (ClampMin = 1, ClampMax = 999))
+	int32 AmmoCapacity = 60;
+
+	/** Current reserve ammo available for reloads. */
+	int32 ReserveAmmo = 0;
+
+	/** Weapon slot category used by ammo pickups and loadout logic. */
+	UPROPERTY(EditAnywhere, Category="Weapon")
+	EShooterWeaponSlot WeaponSlot = EShooterWeaponSlot::MainArm;
+
+	/** Base damage applied by this weapon before archetype multipliers. */
+	UPROPERTY(EditAnywhere, Category="Damage", meta = (ClampMin = 0.0, ClampMax = 1000.0))
+	float WeaponDamage = 25.0f;
+
+	/** Damage type applied by this weapon's projectiles. */
+	UPROPERTY(EditAnywhere, Category="Damage")
+	TSubclassOf<UDamageType> WeaponDamageType;
 	
 	/** Animation montage to play when firing this weapon */
 	UPROPERTY(EditAnywhere, Category="Animation")
@@ -85,6 +106,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Refire", meta = (ClampMin = 0, ClampMax = 5, Units = "s"))
 	float RefireRate = 0.5f;
 
+	/** Reload time in seconds. */
+	UPROPERTY(EditAnywhere, Category="Refire", meta = (ClampMin = 0.0, ClampMax = 10.0, Units = "s"))
+	float ReloadTime = 1.0f;
+
 	/** Game time of last shot fired, used to enforce refire rate on semi auto */
 	float TimeOfLastShot = 0.0f;
 
@@ -93,6 +118,12 @@ protected:
 
 	/** Timer to handle full auto refiring */
 	FTimerHandle RefireTimer;
+
+	/** Timer to handle delayed reload completion. */
+	FTimerHandle ReloadTimer;
+
+	/** True while the weapon is currently reloading. */
+	bool bIsReloading = false;
 
 	/** Cast pawn pointer to the owner for AI perception system interactions */
 	TObjectPtr<APawn> PawnOwner;
@@ -150,11 +181,20 @@ protected:
 	/** Called when the refire rate time has passed while shooting semi auto weapons */
 	void FireCooldownExpired();
 
+	/** Starts a reload if possible. */
+	void StartReload();
+
+	/** Completes a pending reload and fills the magazine from reserve ammo. */
+	void CompleteReload();
+
 	/** Fire a projectile towards the target location */
 	virtual void FireProjectile(const FVector& TargetLocation);
 
 	/** Calculates the spawn transform for projectiles shot by this weapon */
 	FTransform CalculateProjectileSpawnTransform(const FVector& TargetLocation) const;
+
+	/** Returns true if this weapon can currently fire a shot. */
+	bool CanFireNow() const;
 
 public:
 
@@ -177,4 +217,19 @@ public:
 
 	/** Returns the current bullet count */
 	int32 GetBulletCount() const { return CurrentBullets; }
+
+	/** Returns current reserve ammo. */
+	int32 GetReserveAmmo() const { return ReserveAmmo; }
+
+	/** Returns maximum total ammo capacity for this weapon. */
+	int32 GetAmmoCapacity() const { return AmmoCapacity; }
+
+	/** Returns this weapon's slot category. */
+	EShooterWeaponSlot GetWeaponSlot() const { return WeaponSlot; }
+
+	/** Returns this weapon's base damage. */
+	float GetWeaponDamage() const { return WeaponDamage; }
+
+	/** Adds ammo up to capacity and returns amount actually added. */
+	int32 AddAmmo(int32 AmmoToAdd);
 };

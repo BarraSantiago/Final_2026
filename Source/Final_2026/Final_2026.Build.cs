@@ -29,6 +29,7 @@ public class Final_2026 : ModuleRules
 			"Final_2026/Variant_Horror/UI",
 			"Final_2026/Variant_Shooter",
 			"Final_2026/Variant_Shooter/AI",
+			"Final_2026/Variant_Shooter/Interaction",
 			"Final_2026/Variant_Shooter/UI",
 			"Final_2026/Variant_Shooter/Weapons"
 		});

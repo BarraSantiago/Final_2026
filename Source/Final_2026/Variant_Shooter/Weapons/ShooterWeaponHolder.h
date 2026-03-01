@@ -38,6 +38,9 @@ public:
 	/** Updates the weapon's HUD with the current ammo count */
 	virtual void UpdateWeaponHUD(int32 CurrentAmmo, int32 MagazineSize) = 0;
 
+	/** Returns a multiplier used to scale outgoing weapon damage. */
+	virtual float GetWeaponDamageMultiplier() const = 0;
+
 	/** Calculates and returns the aim location for the weapon */
 	virtual FVector GetWeaponTargetLocation() = 0;
 

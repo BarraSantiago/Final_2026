@@ -10,6 +10,7 @@ class USphereComponent;
 class UProjectileMovementComponent;
 class ACharacter;
 class UPrimitiveComponent;
+class UDamageType;
 
 /**
  *  Simple projectile class for a first person shooter game
@@ -79,6 +80,12 @@ public:
 
 	/** Constructor */
 	AShooterProjectile();
+
+	/** Sets hit damage for this projectile instance. */
+	void SetHitDamage(float InHitDamage) { HitDamage = InHitDamage; }
+
+	/** Sets hit damage type for this projectile instance. */
+	void SetHitDamageType(const TSubclassOf<UDamageType>& InDamageType) { HitDamageType = InDamageType; }
 
 protected:
 	

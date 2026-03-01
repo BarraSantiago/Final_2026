@@ -11,10 +11,11 @@
 #include "Animation/AnimInstance.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/DamageType.h"
 
 AShooterWeapon::AShooterWeapon()
 {
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
 
 	// create the root
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
@@ -40,18 +41,31 @@ void AShooterWeapon::BeginPlay()
 {
 	Super::BeginPlay();
 
+	if (!WeaponDamageType)
+	{
+		WeaponDamageType = UDamageType::StaticClass();
+	}
+
 	// subscribe to the owner's destroyed delegate
-	GetOwner()->OnDestroyed.AddDynamic(this, &AShooterWeapon::OnOwnerDestroyed);
+	if (IsValid(GetOwner()))
+	{
+		GetOwner()->OnDestroyed.AddDynamic(this, &AShooterWeapon::OnOwnerDestroyed);
+	}
 
 	// cast the weapon owner
 	WeaponOwner = Cast<IShooterWeaponHolder>(GetOwner());
 	PawnOwner = Cast<APawn>(GetOwner());
 
-	// fill the first ammo clip
-	CurrentBullets = MagazineSize;
+	// fill ammo and reserve using capacity limits
+	CurrentBullets = FMath::Clamp(MagazineSize, 0, AmmoCapacity);
+	ReserveAmmo = FMath::Max(0, AmmoCapacity - CurrentBullets);
 
 	// attach the meshes to the owner
-	WeaponOwner->AttachWeaponMeshes(this);
+	if (WeaponOwner)
+	{
+		WeaponOwner->AttachWeaponMeshes(this);
+		WeaponOwner->UpdateWeaponHUD(CurrentBullets, MagazineSize);
+	}
 }
 
 void AShooterWeapon::EndPlay(EEndPlayReason::Type EndPlayReason)
@@ -60,6 +74,7 @@ void AShooterWeapon::EndPlay(EEndPlayReason::Type EndPlayReason)
 
 	// clear the refire timer
 	GetWorld()->GetTimerManager().ClearTimer(RefireTimer);
+	GetWorld()->GetTimerManager().ClearTimer(ReloadTimer);
 }
 
 void AShooterWeapon::OnOwnerDestroyed(AActor* DestroyedActor)
@@ -74,7 +89,11 @@ void AShooterWeapon::ActivateWeapon()
 	SetActorHiddenInGame(false);
 
 	// notify the owner
-	WeaponOwner->OnWeaponActivated(this);
+	if (WeaponOwner)
+	{
+		WeaponOwner->OnWeaponActivated(this);
+		WeaponOwner->UpdateWeaponHUD(CurrentBullets, MagazineSize);
+	}
 }
 
 void AShooterWeapon::DeactivateWeapon()
@@ -86,13 +105,27 @@ void AShooterWeapon::DeactivateWeapon()
 	SetActorHiddenInGame(true);
 
 	// notify the owner
-	WeaponOwner->OnWeaponDeactivated(this);
+	if (WeaponOwner)
+	{
+		WeaponOwner->OnWeaponDeactivated(this);
+	}
 }
 
 void AShooterWeapon::StartFiring()
 {
+	if (!WeaponOwner)
+	{
+		return;
+	}
+
 	// raise the firing flag
 	bIsFiring = true;
+
+	if (!CanFireNow())
+	{
+		StartReload();
+		return;
+	}
 
 	// check how much time has passed since we last shot
 	// this may be under the refire rate if the weapon shoots slow enough and the player is spamming the trigger
@@ -108,7 +141,8 @@ void AShooterWeapon::StartFiring()
 		// if we're full auto, schedule the next shot
 		if (bFullAuto)
 		{
-			GetWorld()->GetTimerManager().SetTimer(RefireTimer, this, &AShooterWeapon::Fire, TimeSinceLastShot, false);
+			const float TimeToNextShot = FMath::Max(0.0f, RefireRate - TimeSinceLastShot);
+			GetWorld()->GetTimerManager().SetTimer(RefireTimer, this, &AShooterWeapon::Fire, TimeToNextShot, false);
 		}
 
 	}
@@ -125,8 +159,18 @@ void AShooterWeapon::StopFiring()
 
 void AShooterWeapon::Fire()
 {
-	// ensure the player still wants to fire. They may have let go of the trigger
-	if (!bIsFiring)
+	// ensure the weapon can currently shoot
+	if (!bIsFiring || !CanFireNow() || !WeaponOwner)
+	{
+		if (bIsFiring)
+		{
+			StartReload();
+		}
+
+		return;
+	}
+
+	if (!ProjectileClass)
 	{
 		return;
 	}
@@ -138,7 +182,10 @@ void AShooterWeapon::Fire()
 	TimeOfLastShot = GetWorld()->GetTimeSeconds();
 
 	// make noise so the AI perception system can hear us
-	MakeNoise(ShotLoudness, PawnOwner, PawnOwner->GetActorLocation(), ShotNoiseRange, ShotNoiseTag);
+	if (PawnOwner)
+	{
+		MakeNoise(ShotLoudness, PawnOwner, PawnOwner->GetActorLocation(), ShotNoiseRange, ShotNoiseTag);
+	}
 
 	// are we full auto?
 	if (bFullAuto)
@@ -156,11 +203,65 @@ void AShooterWeapon::Fire()
 void AShooterWeapon::FireCooldownExpired()
 {
 	// notify the owner
-	WeaponOwner->OnSemiWeaponRefire();
+	if (WeaponOwner)
+	{
+		WeaponOwner->OnSemiWeaponRefire();
+	}
+}
+
+void AShooterWeapon::StartReload()
+{
+	if (bIsReloading)
+	{
+		return;
+	}
+
+	if (CurrentBullets >= MagazineSize || ReserveAmmo <= 0)
+	{
+		return;
+	}
+
+	bIsReloading = true;
+	GetWorld()->GetTimerManager().SetTimer(ReloadTimer, this, &AShooterWeapon::CompleteReload, ReloadTime, false);
+}
+
+void AShooterWeapon::CompleteReload()
+{
+	bIsReloading = false;
+
+	if (CurrentBullets >= MagazineSize || ReserveAmmo <= 0)
+	{
+		return;
+	}
+
+	const int32 MissingBullets = MagazineSize - CurrentBullets;
+	const int32 BulletsToLoad = FMath::Clamp(MissingBullets, 0, ReserveAmmo);
+
+	CurrentBullets += BulletsToLoad;
+	ReserveAmmo -= BulletsToLoad;
+
+	if (WeaponOwner)
+	{
+		WeaponOwner->UpdateWeaponHUD(CurrentBullets, MagazineSize);
+	}
+
+	// Resume fire automatically for full-auto weapons while trigger is held.
+	if (bIsFiring && bFullAuto && CanFireNow())
+	{
+		Fire();
+	}
 }
 
 void AShooterWeapon::FireProjectile(const FVector& TargetLocation)
 {
+	if (!ProjectileClass)
+	{
+		return;
+	}
+
+	// consume one bullet up-front, then spawn the projectile.
+	--CurrentBullets;
+
 	// get the projectile transform
 	FTransform ProjectileTransform = CalculateProjectileSpawnTransform(TargetLocation);
 	
@@ -173,23 +274,26 @@ void AShooterWeapon::FireProjectile(const FVector& TargetLocation)
 
 	AShooterProjectile* Projectile = GetWorld()->SpawnActor<AShooterProjectile>(ProjectileClass, ProjectileTransform, SpawnParams);
 
+	if (Projectile)
+	{
+		const float EffectiveDamage = WeaponDamage * WeaponOwner->GetWeaponDamageMultiplier();
+		Projectile->SetHitDamage(EffectiveDamage);
+		Projectile->SetHitDamageType(WeaponDamageType);
+	}
+
 	// play the firing montage
 	WeaponOwner->PlayFiringMontage(FiringMontage);
 
 	// add recoil
 	WeaponOwner->AddWeaponRecoil(FiringRecoil);
 
-	// consume bullets
-	--CurrentBullets;
-
-	// if the clip is depleted, reload it
-	if (CurrentBullets <= 0)
-	{
-		CurrentBullets = MagazineSize;
-	}
-
 	// update the weapon HUD
 	WeaponOwner->UpdateWeaponHUD(CurrentBullets, MagazineSize);
+
+	if (CurrentBullets <= 0)
+	{
+		StartReload();
+	}
 }
 
 FTransform AShooterWeapon::CalculateProjectileSpawnTransform(const FVector& TargetLocation) const
@@ -215,4 +319,30 @@ const TSubclassOf<UAnimInstance>& AShooterWeapon::GetFirstPersonAnimInstanceClas
 const TSubclassOf<UAnimInstance>& AShooterWeapon::GetThirdPersonAnimInstanceClass() const
 {
 	return ThirdPersonAnimInstanceClass;
+}
+
+bool AShooterWeapon::CanFireNow() const
+{
+	return !bIsReloading && CurrentBullets > 0;
+}
+
+int32 AShooterWeapon::AddAmmo(int32 AmmoToAdd)
+{
+	if (AmmoToAdd <= 0)
+	{
+		return 0;
+	}
+
+	const int32 TotalAmmo = CurrentBullets + ReserveAmmo;
+	const int32 MissingAmmo = FMath::Max(0, AmmoCapacity - TotalAmmo);
+	const int32 AddedAmmo = FMath::Min(AmmoToAdd, MissingAmmo);
+
+	ReserveAmmo += AddedAmmo;
+
+	if (WeaponOwner)
+	{
+		WeaponOwner->UpdateWeaponHUD(CurrentBullets, MagazineSize);
+	}
+
+	return AddedAmmo;
 }

@@ -5,15 +5,19 @@
 #include "CoreMinimal.h"
 #include "Final_2026Character.h"
 #include "ShooterWeaponHolder.h"
+#include "ShooterArchetypeTypes.h"
+#include "Weapons/ShooterWeaponTypes.h"
 #include "ShooterCharacter.generated.h"
 
 class AShooterWeapon;
 class UInputAction;
 class UInputComponent;
 class UPawnNoiseEmitterComponent;
+class IShooterInteractable;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FBulletCountUpdatedDelegate, int32, MagazineSize, int32, Bullets);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDamagedDelegate, float, LifePercent);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FInteractionPromptUpdatedDelegate, bool, bVisible, FText, ObjectName, FText, HintText);
 
 /**
  *  A player controllable first person shooter character
@@ -39,6 +43,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category ="Input")
 	UInputAction* SwitchWeaponAction;
 
+	/** Manual interaction input action. */
+	UPROPERTY(EditAnywhere, Category ="Input")
+	UInputAction* InteractAction;
+
 	/** Name of the first person mesh weapon socket */
 	UPROPERTY(EditAnywhere, Category ="Weapons")
 	FName FirstPersonWeaponSocket = FName("HandGrip_R");
@@ -52,8 +60,11 @@ protected:
 	float MaxAimDistance = 10000.0f;
 
 	/** Max HP this character can have */
-	UPROPERTY(EditAnywhere, Category="Health")
-	float MaxHP = 500.0f;
+	UPROPERTY(EditAnywhere, Category="Stats")
+	FShooterArchetypeStats ArchetypeStats;
+
+	/** Max HP from current archetype. */
+	float MaxHP = 100.0f;
 
 	/** Current HP remaining to this character */
 	float CurrentHP = 0.0f;
@@ -61,6 +72,10 @@ protected:
 	/** Team ID for this character*/
 	UPROPERTY(EditAnywhere, Category="Team")
 	uint8 TeamByte = 0;
+
+	/** Max distance for manual interaction traces from the camera. */
+	UPROPERTY(EditAnywhere, Category="Interaction", meta = (ClampMin = 0, ClampMax = 2000, Units = "cm"))
+	float InteractionTraceDistance = 500.0f;
 
 	/** List of weapons picked up by the character */
 	TArray<AShooterWeapon*> OwnedWeapons;
@@ -73,6 +88,12 @@ protected:
 
 	FTimerHandle RespawnTimer;
 
+	/** Actor currently under interaction focus. */
+	TObjectPtr<AActor> FocusedInteractableActor;
+
+	/** Whether interaction prompt is currently shown. */
+	bool bShowingInteractionPrompt = false;
+
 public:
 
 	/** Bullet count updated delegate */
@@ -80,6 +101,9 @@ public:
 
 	/** Damaged delegate */
 	FDamagedDelegate OnDamaged;
+
+	/** Interaction prompt state changed delegate. */
+	FInteractionPromptUpdatedDelegate OnInteractionPromptUpdated;
 
 public:
 
@@ -93,6 +117,9 @@ protected:
 
 	/** Gameplay cleanup */
 	virtual void EndPlay(EEndPlayReason::Type EndPlayReason) override;
+
+	/** Gameplay tick for interaction tracing. */
+	virtual void Tick(float DeltaSeconds) override;
 
 	/** Set up input action bindings */
 	virtual void SetupPlayerInputComponent(UInputComponent* InputComponent) override;
@@ -116,6 +143,22 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void DoSwitchWeapon();
 
+	/** Handles manual interaction input. */
+	UFUNCTION(BlueprintCallable, Category="Input")
+	void DoInteract();
+
+	/** Restores health and returns true if any health was restored. */
+	UFUNCTION(BlueprintCallable, Category="Health")
+	bool TryRestoreHealth(float HealthToRestore);
+
+	/** Adds ammo to a weapon slot and returns true if any ammo was added. */
+	UFUNCTION(BlueprintCallable, Category="Weapons")
+	bool TryAddAmmo(EShooterWeaponSlot Slot, int32 AmmoToAdd);
+
+	/** Returns current health percentage from 0 to 1. */
+	UFUNCTION(BlueprintPure, Category="Health")
+	float GetHealthPercent() const;
+
 public:
 
 	//~Begin IShooterWeaponHolder interface
@@ -131,6 +174,9 @@ public:
 
 	/** Updates the weapon's HUD with the current ammo count */
 	virtual void UpdateWeaponHUD(int32 CurrentAmmo, int32 MagazineSize) override;
+
+	/** Returns archetype damage multiplier for outgoing weapon damage. */
+	virtual float GetWeaponDamageMultiplier() const override;
 
 	/** Calculates and returns the aim location for the weapon */
 	virtual FVector GetWeaponTargetLocation() override;
@@ -153,6 +199,15 @@ protected:
 
 	/** Returns true if the character already owns a weapon of the given class */
 	AShooterWeapon* FindWeaponOfType(TSubclassOf<AShooterWeapon> WeaponClass) const;
+
+	/** Returns the first owned weapon matching a slot. */
+	AShooterWeapon* FindWeaponBySlot(EShooterWeaponSlot Slot) const;
+
+	/** Refreshes interaction focus by tracing from the first person camera. */
+	void RefreshInteractionFocus();
+
+	/** Updates HUD interaction prompt. */
+	void UpdateInteractionPrompt(bool bVisible, const FText& ObjectName = FText::GetEmpty(), const FText& HintText = FText::GetEmpty());
 
 	/** Called when this character's HP is depleted */
 	void Die();

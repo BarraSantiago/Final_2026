@@ -153,7 +153,7 @@ void AShooterProjectile::ProcessHit(AActor* HitActor, UPrimitiveComponent* HitCo
 	}
 
 	// have we hit a physics object?
-	if (HitComp->IsSimulatingPhysics())
+	if (HitComp && HitComp->IsSimulatingPhysics())
 	{
 		// give some physics impulse to the object
 		HitComp->AddImpulseAtLocation(HitDirection * PhysicsForce, HitLocation);

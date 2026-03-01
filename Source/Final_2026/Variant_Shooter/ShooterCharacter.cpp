@@ -3,6 +3,7 @@
 
 #include "ShooterCharacter.h"
 #include "ShooterWeapon.h"
+#include "Interaction/ShooterInteractable.h"
 #include "EnhancedInputComponent.h"
 #include "Components/InputComponent.h"
 #include "Components/PawnNoiseEmitterComponent.h"
@@ -15,6 +16,8 @@
 
 AShooterCharacter::AShooterCharacter()
 {
+	PrimaryActorTick.bCanEverTick = true;
+
 	// create the noise emitter component
 	PawnNoiseEmitter = CreateDefaultSubobject<UPawnNoiseEmitterComponent>(TEXT("Pawn Noise Emitter"));
 
@@ -26,11 +29,15 @@ void AShooterCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
+	MaxHP = ArchetypeStats.MaxHealth;
+
 	// reset HP to max
 	CurrentHP = MaxHP;
+	GetCharacterMovement()->MaxWalkSpeed = ArchetypeStats.MoveSpeed;
 
 	// update the HUD
 	OnDamaged.Broadcast(1.0f);
+	UpdateInteractionPrompt(false);
 }
 
 void AShooterCharacter::EndPlay(EEndPlayReason::Type EndPlayReason)
@@ -39,6 +46,13 @@ void AShooterCharacter::EndPlay(EEndPlayReason::Type EndPlayReason)
 
 	// clear the respawn timer
 	GetWorld()->GetTimerManager().ClearTimer(RespawnTimer);
+}
+
+void AShooterCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	RefreshInteractionFocus();
 }
 
 void AShooterCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -50,11 +64,22 @@ void AShooterCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		// Firing
-		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &AShooterCharacter::DoStartFiring);
-		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Completed, this, &AShooterCharacter::DoStopFiring);
+		if (FireAction)
+		{
+			EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &AShooterCharacter::DoStartFiring);
+			EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Completed, this, &AShooterCharacter::DoStopFiring);
+		}
 
 		// Switch weapon
-		EnhancedInputComponent->BindAction(SwitchWeaponAction, ETriggerEvent::Triggered, this, &AShooterCharacter::DoSwitchWeapon);
+		if (SwitchWeaponAction)
+		{
+			EnhancedInputComponent->BindAction(SwitchWeaponAction, ETriggerEvent::Triggered, this, &AShooterCharacter::DoSwitchWeapon);
+		}
+
+		if (InteractAction)
+		{
+			EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &AShooterCharacter::DoInteract);
+		}
 	}
 
 }
@@ -68,7 +93,7 @@ float AShooterCharacter::TakeDamage(float Damage, struct FDamageEvent const& Dam
 	}
 
 	// Reduce HP
-	CurrentHP -= Damage;
+	CurrentHP = FMath::Max(0.0f, CurrentHP - Damage);
 
 	// Have we depleted HP?
 	if (CurrentHP <= 0.0f)
@@ -130,6 +155,63 @@ void AShooterCharacter::DoSwitchWeapon()
 	}
 }
 
+void AShooterCharacter::DoInteract()
+{
+	if (!IsValid(FocusedInteractableActor))
+	{
+		return;
+	}
+
+	IShooterInteractable* Interactable = Cast<IShooterInteractable>(FocusedInteractableActor.Get());
+	if (!Interactable)
+	{
+		return;
+	}
+
+	if (Interactable->CanInteract(this))
+	{
+		Interactable->Interact(this);
+	}
+
+	// interaction may alter state, so refresh prompt immediately.
+	RefreshInteractionFocus();
+}
+
+bool AShooterCharacter::TryRestoreHealth(float HealthToRestore)
+{
+	if (HealthToRestore <= 0.0f || CurrentHP <= 0.0f)
+	{
+		return false;
+	}
+
+	const float PreviousHP = CurrentHP;
+	CurrentHP = FMath::Min(MaxHP, CurrentHP + HealthToRestore);
+
+	if (!FMath::IsNearlyEqual(PreviousHP, CurrentHP))
+	{
+		OnDamaged.Broadcast(GetHealthPercent());
+		return true;
+	}
+
+	return false;
+}
+
+bool AShooterCharacter::TryAddAmmo(EShooterWeaponSlot Slot, int32 AmmoToAdd)
+{
+	if (AmmoToAdd <= 0)
+	{
+		return false;
+	}
+
+	AShooterWeapon* Weapon = FindWeaponBySlot(Slot);
+	return IsValid(Weapon) && Weapon->AddAmmo(AmmoToAdd) > 0;
+}
+
+float AShooterCharacter::GetHealthPercent() const
+{
+	return MaxHP > 0.0f ? CurrentHP / MaxHP : 0.0f;
+}
+
 void AShooterCharacter::AttachWeaponMeshes(AShooterWeapon* Weapon)
 {
 	const FAttachmentTransformRules AttachmentRule(EAttachmentRule::SnapToTarget, false);
@@ -139,7 +221,7 @@ void AShooterCharacter::AttachWeaponMeshes(AShooterWeapon* Weapon)
 
 	// attach the weapon meshes
 	Weapon->GetFirstPersonMesh()->AttachToComponent(GetFirstPersonMesh(), AttachmentRule, FirstPersonWeaponSocket);
-	Weapon->GetThirdPersonMesh()->AttachToComponent(GetMesh(), AttachmentRule, FirstPersonWeaponSocket);
+	Weapon->GetThirdPersonMesh()->AttachToComponent(GetMesh(), AttachmentRule, ThirdPersonWeaponSocket);
 	
 }
 
@@ -157,6 +239,11 @@ void AShooterCharacter::AddWeaponRecoil(float Recoil)
 void AShooterCharacter::UpdateWeaponHUD(int32 CurrentAmmo, int32 MagazineSize)
 {
 	OnBulletCountUpdated.Broadcast(MagazineSize, CurrentAmmo);
+}
+
+float AShooterCharacter::GetWeaponDamageMultiplier() const
+{
+	return ArchetypeStats.DamageMultiplier;
 }
 
 FVector AShooterCharacter::GetWeaponTargetLocation()
@@ -246,6 +333,66 @@ AShooterWeapon* AShooterCharacter::FindWeaponOfType(TSubclassOf<AShooterWeapon> 
 
 }
 
+AShooterWeapon* AShooterCharacter::FindWeaponBySlot(EShooterWeaponSlot Slot) const
+{
+	for (AShooterWeapon* Weapon : OwnedWeapons)
+	{
+		if (IsValid(Weapon) && Weapon->GetWeaponSlot() == Slot)
+		{
+			return Weapon;
+		}
+	}
+
+	return nullptr;
+}
+
+void AShooterCharacter::RefreshInteractionFocus()
+{
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
+
+	FHitResult OutHit;
+
+	const FVector Start = GetFirstPersonCameraComponent()->GetComponentLocation();
+	const FVector End = Start + (GetFirstPersonCameraComponent()->GetForwardVector() * InteractionTraceDistance);
+
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this);
+
+	GetWorld()->LineTraceSingleByChannel(OutHit, Start, End, ECC_Visibility, QueryParams);
+
+	AActor* HitActor = OutHit.GetActor();
+	IShooterInteractable* Interactable = HitActor ? Cast<IShooterInteractable>(HitActor) : nullptr;
+
+	if (Interactable && Interactable->CanInteract(this))
+	{
+		FocusedInteractableActor = HitActor;
+		UpdateInteractionPrompt(true, Interactable->GetInteractionName(), Interactable->GetInteractionHint());
+		return;
+	}
+
+	FocusedInteractableActor = nullptr;
+	UpdateInteractionPrompt(false);
+}
+
+void AShooterCharacter::UpdateInteractionPrompt(bool bVisible, const FText& ObjectName, const FText& HintText)
+{
+	if (bShowingInteractionPrompt == bVisible)
+	{
+		// Keep prompt data refreshed if still visible and object/hint can change at runtime.
+		if (bVisible)
+		{
+			OnInteractionPromptUpdated.Broadcast(true, ObjectName, HintText);
+		}
+		return;
+	}
+
+	bShowingInteractionPrompt = bVisible;
+	OnInteractionPromptUpdated.Broadcast(bVisible, ObjectName, HintText);
+}
+
 void AShooterCharacter::Die()
 {
 	// deactivate the weapon
@@ -258,6 +405,11 @@ void AShooterCharacter::Die()
 	if (AShooterGameMode* GM = Cast<AShooterGameMode>(GetWorld()->GetAuthGameMode()))
 	{
 		GM->IncrementTeamScore(TeamByte);
+
+		if (IsPlayerControlled())
+		{
+			GM->NotifyPlayerDied();
+		}
 	}
 		
 	// stop character movement
@@ -268,6 +420,8 @@ void AShooterCharacter::Die()
 
 	// reset the bullet counter UI
 	OnBulletCountUpdated.Broadcast(0, 0);
+	UpdateInteractionPrompt(false);
+	FocusedInteractableActor = nullptr;
 
 	// call the BP handler
 	BP_OnDeath();
