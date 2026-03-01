@@ -16,13 +16,19 @@ void AShooterNPC::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// spawn the weapon
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.Owner = this;
-	SpawnParams.Instigator = this;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	CurrentHP = ArchetypeStats.MaxHealth;
+	GetCharacterMovement()->MaxWalkSpeed = ArchetypeStats.MoveSpeed;
 
-	Weapon = GetWorld()->SpawnActor<AShooterWeapon>(WeaponClass, GetActorTransform(), SpawnParams);
+	// spawn the weapon
+	if (WeaponClass)
+	{
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = this;
+		SpawnParams.Instigator = this;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		Weapon = GetWorld()->SpawnActor<AShooterWeapon>(WeaponClass, GetActorTransform(), SpawnParams);
+	}
 }
 
 void AShooterNPC::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -42,7 +48,8 @@ float AShooterNPC::TakeDamage(float Damage, struct FDamageEvent const& DamageEve
 	}
 
 	// Reduce HP
-	CurrentHP -= Damage;
+	CurrentHP = FMath::Max(0.0f, CurrentHP - Damage);
+	LastDamageInstigator = EventInstigator;
 
 	// Have we depleted HP?
 	if (CurrentHP <= 0.0f)
@@ -62,7 +69,7 @@ void AShooterNPC::AttachWeaponMeshes(AShooterWeapon* WeaponToAttach)
 
 	// attach the weapon meshes
 	WeaponToAttach->GetFirstPersonMesh()->AttachToComponent(GetFirstPersonMesh(), AttachmentRule, FirstPersonWeaponSocket);
-	WeaponToAttach->GetThirdPersonMesh()->AttachToComponent(GetMesh(), AttachmentRule, FirstPersonWeaponSocket);
+	WeaponToAttach->GetThirdPersonMesh()->AttachToComponent(GetMesh(), AttachmentRule, ThirdPersonWeaponSocket);
 }
 
 void AShooterNPC::PlayFiringMontage(UAnimMontage* Montage)
@@ -78,6 +85,11 @@ void AShooterNPC::AddWeaponRecoil(float Recoil)
 void AShooterNPC::UpdateWeaponHUD(int32 CurrentAmmo, int32 MagazineSize)
 {
 	// unused
+}
+
+float AShooterNPC::GetWeaponDamageMultiplier() const
+{
+	return ArchetypeStats.DamageMultiplier;
 }
 
 FVector AShooterNPC::GetWeaponTargetLocation()
@@ -144,7 +156,10 @@ void AShooterNPC::OnSemiWeaponRefire()
 	if (bIsShooting)
 	{
 		// fire the weapon
-		Weapon->StartFiring();
+		if (IsValid(Weapon))
+		{
+			Weapon->StartFiring();
+		}
 	}
 }
 
@@ -163,7 +178,10 @@ void AShooterNPC::Die()
 	if (AShooterGameMode* GM = Cast<AShooterGameMode>(GetWorld()->GetAuthGameMode()))
 	{
 		GM->IncrementTeamScore(TeamByte);
+		GM->NotifyEnemyKilled(LastDamageInstigator.Get());
 	}
+
+	OnPawnDeath.Broadcast();
 
 	// disable capsule collision
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -195,7 +213,10 @@ void AShooterNPC::StartShooting(AActor* ActorToShoot)
 	bIsShooting = true;
 
 	// signal the weapon
-	Weapon->StartFiring();
+	if (IsValid(Weapon))
+	{
+		Weapon->StartFiring();
+	}
 }
 
 void AShooterNPC::StopShooting()
@@ -204,5 +225,8 @@ void AShooterNPC::StopShooting()
 	bIsShooting = false;
 
 	// signal the weapon
-	Weapon->StopFiring();
+	if (IsValid(Weapon))
+	{
+		Weapon->StopFiring();
+	}
 }

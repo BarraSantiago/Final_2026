@@ -5,11 +5,13 @@
 #include "CoreMinimal.h"
 #include "Final_2026Character.h"
 #include "ShooterWeaponHolder.h"
+#include "ShooterArchetypeTypes.h"
 #include "ShooterNPC.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FPawnDeathDelegate);
 
 class AShooterWeapon;
+class AController;
 
 /**
  *  A simple AI-controlled shooter game NPC
@@ -23,11 +25,15 @@ class FINAL_2026_API AShooterNPC : public AFinal_2026Character, public IShooterW
 
 public:
 
-	/** Current HP for this character. It dies if it reaches zero through damage */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Damage")
+	/** Current HP for this character. It dies if it reaches zero through damage. */
+	UPROPERTY(BlueprintReadOnly, Category="Damage")
 	float CurrentHP = 100.0f;
 
 protected:
+
+	/** Archetype stats used for health, speed, and outgoing damage scaling. */
+	UPROPERTY(EditAnywhere, Category="Stats")
+	FShooterArchetypeStats ArchetypeStats;
 
 	/** Name of the collision profile to use during ragdoll death */
 	UPROPERTY(EditAnywhere, Category="Damage")
@@ -81,6 +87,9 @@ protected:
 	/** If true, this character has already died */
 	bool bIsDead = false;
 
+	/** Last controller that damaged this NPC, used to credit kills. */
+	TObjectPtr<AController> LastDamageInstigator;
+
 	/** Deferred destruction on death timer */
 	FTimerHandle DeathTimer;
 
@@ -117,6 +126,9 @@ public:
 
 	/** Updates the weapon's HUD with the current ammo count */
 	virtual void UpdateWeaponHUD(int32 CurrentAmmo, int32 MagazineSize) override;
+
+	/** Returns archetype damage multiplier for outgoing weapon damage. */
+	virtual float GetWeaponDamageMultiplier() const override;
 
 	/** Calculates and returns the aim location for the weapon */
 	virtual FVector GetWeaponTargetLocation() override;
