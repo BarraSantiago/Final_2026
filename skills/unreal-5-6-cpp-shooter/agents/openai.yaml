@@ -1,0 +1,4 @@
+interface:
+  display_name: "Unreal 5.6 C++ Shooter"
+  short_description: "Build UE5.6 C++ shooter systems and design docs"
+  default_prompt: "Help me implement and iterate shooter-game systems in Unreal Engine 5.6 with C++."
