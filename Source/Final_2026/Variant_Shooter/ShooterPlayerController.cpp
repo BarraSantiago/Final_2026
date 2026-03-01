@@ -9,6 +9,7 @@
 #include "GameFramework/PlayerStart.h"
 #include "ShooterCharacter.h"
 #include "ShooterBulletCounterUI.h"
+#include "ShooterGameMode.h"
 #include "Final_2026.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 
@@ -54,6 +55,8 @@ void AShooterPlayerController::BeginPlay()
 
 void AShooterPlayerController::SetupInputComponent()
 {
+	Super::SetupInputComponent();
+
 	// only add IMCs for local player controllers
 	if (IsLocalPlayerController())
 	{
@@ -93,6 +96,7 @@ void AShooterPlayerController::OnPossess(APawn* InPawn)
 		// subscribe to the pawn's delegates
 		ShooterCharacter->OnBulletCountUpdated.AddDynamic(this, &AShooterPlayerController::OnBulletCountUpdated);
 		ShooterCharacter->OnDamaged.AddDynamic(this, &AShooterPlayerController::OnPawnDamaged);
+		ShooterCharacter->OnInteractionPromptUpdated.AddDynamic(this, &AShooterPlayerController::OnInteractionPromptUpdated);
 
 		// force update the life bar
 		ShooterCharacter->OnDamaged.Broadcast(1.0f);
@@ -102,7 +106,18 @@ void AShooterPlayerController::OnPossess(APawn* InPawn)
 void AShooterPlayerController::OnPawnDestroyed(AActor* DestroyedActor)
 {
 	// reset the bullet counter HUD
-	BulletCounterUI->BP_UpdateBulletCounter(0, 0);
+	if (BulletCounterUI)
+	{
+		BulletCounterUI->BP_UpdateBulletCounter(0, 0);
+	}
+
+	if (const AShooterGameMode* ShooterGameMode = GetWorld()->GetAuthGameMode<AShooterGameMode>())
+	{
+		if (ShooterGameMode->IsQuestEnded())
+		{
+			return;
+		}
+	}
 
 	// find the player start
 	TArray<AActor*> ActorList;
@@ -110,6 +125,11 @@ void AShooterPlayerController::OnPawnDestroyed(AActor* DestroyedActor)
 
 	if (ActorList.Num() > 0)
 	{
+		if (!CharacterClass)
+		{
+			return;
+		}
+
 		// select a random player start
 		AActor* RandomPlayerStart = ActorList[FMath::RandRange(0, ActorList.Num() - 1)];
 
@@ -138,5 +158,45 @@ void AShooterPlayerController::OnPawnDamaged(float LifePercent)
 	if (IsValid(BulletCounterUI))
 	{
 		BulletCounterUI->BP_Damaged(LifePercent);
+	}
+}
+
+void AShooterPlayerController::OnInteractionPromptUpdated(bool bVisible, FText ObjectName, FText HintText)
+{
+	if (IsValid(BulletCounterUI))
+	{
+		BulletCounterUI->BP_SetInteractionPrompt(bVisible, ObjectName, HintText);
+	}
+}
+
+void AShooterPlayerController::SetObjectiveText(const FText& ObjectiveText)
+{
+	if (IsValid(BulletCounterUI))
+	{
+		BulletCounterUI->BP_SetObjectiveText(ObjectiveText);
+	}
+}
+
+void AShooterPlayerController::SetObjectiveTimer(float RemainingTimeSeconds)
+{
+	if (IsValid(BulletCounterUI))
+	{
+		BulletCounterUI->BP_SetObjectiveTimer(RemainingTimeSeconds);
+	}
+}
+
+void AShooterPlayerController::SetKillCount(int32 KillCount)
+{
+	if (IsValid(BulletCounterUI))
+	{
+		BulletCounterUI->BP_SetKillCount(KillCount);
+	}
+}
+
+void AShooterPlayerController::ShowEnding(const FName& EndingId, const FText& EndingText, bool bWon)
+{
+	if (IsValid(BulletCounterUI))
+	{
+		BulletCounterUI->BP_ShowEnding(EndingId, EndingText, bWon);
 	}
 }

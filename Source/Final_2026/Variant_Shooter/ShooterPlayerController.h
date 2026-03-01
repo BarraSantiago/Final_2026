@@ -74,4 +74,22 @@ protected:
 	/** Called when the possessed pawn is damaged */
 	UFUNCTION()
 	void OnPawnDamaged(float LifePercent);
+
+	/** Called when interaction prompt visibility/content changes. */
+	UFUNCTION()
+	void OnInteractionPromptUpdated(bool bVisible, FText ObjectName, FText HintText);
+
+public:
+
+	/** Push objective text to HUD widgets. */
+	void SetObjectiveText(const FText& ObjectiveText);
+
+	/** Push quest timer to HUD widgets. */
+	void SetObjectiveTimer(float RemainingTimeSeconds);
+
+	/** Push kill count to HUD widgets. */
+	void SetKillCount(int32 KillCount);
+
+	/** Push ending result to HUD widgets. */
+	void ShowEnding(const FName& EndingId, const FText& EndingText, bool bWon);
 };
