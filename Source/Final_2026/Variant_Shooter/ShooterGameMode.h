@@ -9,7 +9,9 @@
 class UShooterUI;
 class AShooterObjectiveDoor;
 class AShooterCharacter;
+class AShooterNPC;
 class AController;
+class AActor;
 
 UENUM(BlueprintType)
 enum class EShooterDoorUnlockMode : uint8
@@ -62,6 +64,46 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Quest|Endings", meta = (ClampMin = 0))
 	int32 FinalCMinKills = 100;
 
+	/** If true, a death respawns the player. If false, death opens game over menu. */
+	UPROPERTY(EditAnywhere, Category="Shooter|Player Death")
+	bool bRespawnPlayerOnDeath = false;
+
+	/** Enables wave spawning for AI enemies. */
+	UPROPERTY(EditAnywhere, Category="Waves")
+	bool bEnableWaveSystem = true;
+
+	/** Enemy class used by the wave spawner. */
+	UPROPERTY(EditAnywhere, Category="Waves", meta=(EditCondition="bEnableWaveSystem"))
+	TSubclassOf<AShooterNPC> WaveEnemyClass;
+
+	/** Actors with this gameplay tag are used as enemy spawn points. */
+	UPROPERTY(EditAnywhere, Category="Waves", meta=(EditCondition="bEnableWaveSystem"))
+	FName EnemySpawnPointTag = FName("EnemySpawn");
+
+	/** Delay before first wave starts. */
+	UPROPERTY(EditAnywhere, Category="Waves", meta=(EditCondition="bEnableWaveSystem", ClampMin = 0.0, Units = "s"))
+	float FirstWaveDelay = 2.0f;
+
+	/** Delay before spawning a new wave once threshold is met. */
+	UPROPERTY(EditAnywhere, Category="Waves", meta=(EditCondition="bEnableWaveSystem", ClampMin = 0.0, Units = "s"))
+	float TimeBetweenWaves = 6.0f;
+
+	/** Delay between enemies spawned inside a wave. */
+	UPROPERTY(EditAnywhere, Category="Waves", meta=(EditCondition="bEnableWaveSystem", ClampMin = 0.0, Units = "s"))
+	float TimeBetweenEnemySpawns = 0.35f;
+
+	/** Number of enemies in wave 1. */
+	UPROPERTY(EditAnywhere, Category="Waves", meta=(EditCondition="bEnableWaveSystem", ClampMin = 1))
+	int32 InitialEnemiesPerWave = 4;
+
+	/** Additional enemies added each wave. */
+	UPROPERTY(EditAnywhere, Category="Waves", meta=(EditCondition="bEnableWaveSystem", ClampMin = 0))
+	int32 EnemiesAddedPerWave = 2;
+
+	/** Next wave triggers when alive enemies are at or below this ratio of wave size. 0 means all dead. */
+	UPROPERTY(EditAnywhere, Category="Waves", meta=(EditCondition="bEnableWaveSystem", ClampMin = 0.0, ClampMax = 1.0))
+	float NextWaveAliveRatioThreshold = 0.0f;
+
 	/** Current quest door actor, registered by the level door instance. */
 	TObjectPtr<AShooterObjectiveDoor> ObjectiveDoor;
 
@@ -82,6 +124,30 @@ protected:
 
 	/** Timer used to update survival countdown on HUD. */
 	FTimerHandle SurvivalTimerHandle;
+
+	/** Enemy spawn points used by wave system. */
+	TArray<TObjectPtr<AActor>> EnemySpawnPoints;
+
+	/** Current wave number. Starts at 0 before first wave. */
+	int32 CurrentWave = 0;
+
+	/** Number of enemies currently alive in the level. */
+	int32 AliveEnemyCount = 0;
+
+	/** Target number of enemies for the currently active wave. */
+	int32 TargetEnemiesThisWave = 0;
+
+	/** Number of enemies already spawned in the active wave. */
+	int32 SpawnedEnemiesThisWave = 0;
+
+	/** True while current wave is still being spawned. */
+	bool bIsSpawningWave = false;
+
+	/** Timer used to start the next wave. */
+	FTimerHandle NextWaveTimerHandle;
+
+	/** Timer used to spawn enemies one by one during a wave. */
+	FTimerHandle SpawnEnemyTimerHandle;
 
 protected:
 
@@ -117,6 +183,9 @@ public:
 	/** Returns true if the run has already ended. */
 	bool IsQuestEnded() const { return bQuestEnded; }
 
+	/** Returns true if player death should trigger respawn instead of game over menu. */
+	bool ShouldRespawnPlayerOnDeath() const { return bRespawnPlayerOnDeath; }
+
 protected:
 
 	/** Recomputes and pushes objective text to the player's HUD. */
@@ -136,4 +205,19 @@ protected:
 
 	/** Returns HUD text for a resolved ending id. */
 	FText BuildEndingDescription(const FName& EndingId) const;
+
+	/** Initializes wave spawning state and spawn points. */
+	void InitializeWaveSystem();
+
+	/** Starts the next enemy wave. */
+	void StartNextWave();
+
+	/** Spawns one enemy for the current wave. */
+	void SpawnOneWaveEnemy();
+
+	/** Schedules the next wave if current conditions are met. */
+	void TryScheduleNextWave();
+
+	/** Stops all wave-related timers and spawning state. */
+	void StopWaveSystem();
 };

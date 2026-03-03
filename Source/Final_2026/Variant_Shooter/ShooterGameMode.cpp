@@ -2,11 +2,14 @@
 
 
 #include "Variant_Shooter/ShooterGameMode.h"
+#include "AI/ShooterNPC.h"
 #include "ShooterUI.h"
 #include "ShooterPlayerController.h"
 #include "Interaction/ShooterObjectiveDoor.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
+#include "GameFramework/PlayerStart.h"
+#include "TimerManager.h"
 
 void AShooterGameMode::BeginPlay()
 {
@@ -35,12 +38,15 @@ void AShooterGameMode::BeginPlay()
 	{
 		ShooterPC->SetKillCount(PlayerKillCount);
 	}
+
+	InitializeWaveSystem();
 }
 
 void AShooterGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	Super::EndPlay(EndPlayReason);
 	GetWorld()->GetTimerManager().ClearTimer(SurvivalTimerHandle);
+	StopWaveSystem();
+	Super::EndPlay(EndPlayReason);
 }
 
 void AShooterGameMode::IncrementTeamScore(uint8 TeamByte)
@@ -94,6 +100,12 @@ void AShooterGameMode::NotifyObjectiveKeyCollected()
 
 void AShooterGameMode::NotifyEnemyKilled(AController* KillerController)
 {
+	if (!bQuestEnded && bEnableWaveSystem)
+	{
+		AliveEnemyCount = FMath::Max(0, AliveEnemyCount - 1);
+		TryScheduleNextWave();
+	}
+
 	if (bQuestEnded || !IsValid(KillerController) || !KillerController->IsPlayerController())
 	{
 		return;
@@ -114,7 +126,21 @@ void AShooterGameMode::NotifyPlayerDied()
 		return;
 	}
 
-	EndRun(FName("FinalZ"), FText::FromString(TEXT("Final Z - Garbage Collected: Bob was eliminated before escaping.")), false);
+	// Respawn mode keeps run active. Game-over mode opens death menu.
+	if (bRespawnPlayerOnDeath)
+	{
+		return;
+	}
+
+	bQuestEnded = true;
+	GetWorld()->GetTimerManager().ClearTimer(SurvivalTimerHandle);
+	StopWaveSystem();
+
+	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(UGameplayStatics::GetPlayerController(GetWorld(), 0)))
+	{
+		ShooterPC->SetObjectiveText(FText::FromString(TEXT("You died.")));
+		ShooterPC->ShowDeathMenu();
+	}
 }
 
 void AShooterGameMode::RequestEscape(AShooterCharacter* EscapingCharacter)
@@ -213,6 +239,7 @@ void AShooterGameMode::EndRun(const FName& EndingId, const FText& EndingText, bo
 
 	bQuestEnded = true;
 	GetWorld()->GetTimerManager().ClearTimer(SurvivalTimerHandle);
+	StopWaveSystem();
 
 	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(UGameplayStatics::GetPlayerController(GetWorld(), 0)))
 	{
@@ -256,4 +283,188 @@ FText AShooterGameMode::BuildEndingDescription(const FName& EndingId) const
 	return FText::Format(
 		FText::FromString(TEXT("Final C - Main Character: escaped with {0} kills.")),
 		FText::AsNumber(PlayerKillCount));
+}
+
+void AShooterGameMode::InitializeWaveSystem()
+{
+	if (!bEnableWaveSystem)
+	{
+		return;
+	}
+
+	EnemySpawnPoints.Reset();
+
+	TArray<AActor*> FoundSpawnPoints;
+	if (!EnemySpawnPointTag.IsNone())
+	{
+		UGameplayStatics::GetAllActorsWithTag(GetWorld(), EnemySpawnPointTag, FoundSpawnPoints);
+	}
+
+	// Fallback to PlayerStart actors so wave system can run even without tagged points.
+	if (FoundSpawnPoints.Num() == 0)
+	{
+		UGameplayStatics::GetAllActorsOfClass(GetWorld(), APlayerStart::StaticClass(), FoundSpawnPoints);
+	}
+
+	for (AActor* SpawnPoint : FoundSpawnPoints)
+	{
+		if (IsValid(SpawnPoint))
+		{
+			EnemySpawnPoints.Add(SpawnPoint);
+		}
+	}
+
+	TArray<AActor*> ExistingEnemies;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AShooterNPC::StaticClass(), ExistingEnemies);
+	AliveEnemyCount = ExistingEnemies.Num();
+
+	if (AliveEnemyCount > 0)
+	{
+		CurrentWave = 1;
+		TargetEnemiesThisWave = AliveEnemyCount;
+		SpawnedEnemiesThisWave = TargetEnemiesThisWave;
+		return;
+	}
+
+	if (!WaveEnemyClass || EnemySpawnPoints.Num() == 0)
+	{
+		return;
+	}
+
+	if (FirstWaveDelay <= 0.0f)
+	{
+		StartNextWave();
+		return;
+	}
+
+	GetWorld()->GetTimerManager().SetTimer(NextWaveTimerHandle, this, &AShooterGameMode::StartNextWave, FirstWaveDelay, false);
+}
+
+void AShooterGameMode::StartNextWave()
+{
+	if (bQuestEnded || !bEnableWaveSystem || !WaveEnemyClass || EnemySpawnPoints.Num() == 0)
+	{
+		return;
+	}
+
+	GetWorld()->GetTimerManager().ClearTimer(NextWaveTimerHandle);
+
+	++CurrentWave;
+	TargetEnemiesThisWave = FMath::Max(1, InitialEnemiesPerWave + ((CurrentWave - 1) * EnemiesAddedPerWave));
+	SpawnedEnemiesThisWave = 0;
+	bIsSpawningWave = true;
+
+	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(UGameplayStatics::GetPlayerController(GetWorld(), 0)))
+	{
+		ShooterPC->SetObjectiveText(FText::Format(
+			FText::FromString(TEXT("Wave {0} started.")),
+			FText::AsNumber(CurrentWave)));
+	}
+
+	if (TimeBetweenEnemySpawns <= 0.0f)
+	{
+		while (SpawnedEnemiesThisWave < TargetEnemiesThisWave)
+		{
+			SpawnOneWaveEnemy();
+		}
+
+		bIsSpawningWave = false;
+		return;
+	}
+
+	SpawnOneWaveEnemy();
+
+	if (SpawnedEnemiesThisWave < TargetEnemiesThisWave)
+	{
+		GetWorld()->GetTimerManager().SetTimer(SpawnEnemyTimerHandle, this, &AShooterGameMode::SpawnOneWaveEnemy, TimeBetweenEnemySpawns, true);
+	}
+	else
+	{
+		bIsSpawningWave = false;
+	}
+}
+
+void AShooterGameMode::SpawnOneWaveEnemy()
+{
+	if (bQuestEnded || !bEnableWaveSystem || !WaveEnemyClass || EnemySpawnPoints.Num() == 0)
+	{
+		StopWaveSystem();
+		return;
+	}
+
+	if (SpawnedEnemiesThisWave >= TargetEnemiesThisWave)
+	{
+		GetWorld()->GetTimerManager().ClearTimer(SpawnEnemyTimerHandle);
+		bIsSpawningWave = false;
+		return;
+	}
+
+	const int32 SpawnPointIdx = FMath::RandRange(0, EnemySpawnPoints.Num() - 1);
+	AActor* SpawnPoint = EnemySpawnPoints[SpawnPointIdx].Get();
+
+	if (IsValid(SpawnPoint))
+	{
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+		if (IsValid(GetWorld()->SpawnActor<AShooterNPC>(WaveEnemyClass, SpawnPoint->GetActorTransform(), SpawnParams)))
+		{
+			++AliveEnemyCount;
+		}
+	}
+
+	++SpawnedEnemiesThisWave;
+
+	if (SpawnedEnemiesThisWave >= TargetEnemiesThisWave)
+	{
+		GetWorld()->GetTimerManager().ClearTimer(SpawnEnemyTimerHandle);
+		bIsSpawningWave = false;
+	}
+}
+
+void AShooterGameMode::TryScheduleNextWave()
+{
+	if (bQuestEnded || !bEnableWaveSystem || bIsSpawningWave || CurrentWave <= 0)
+	{
+		return;
+	}
+
+	if (!WaveEnemyClass || EnemySpawnPoints.Num() == 0)
+	{
+		return;
+	}
+
+	if (GetWorld()->GetTimerManager().IsTimerActive(NextWaveTimerHandle))
+	{
+		return;
+	}
+
+	const int32 AliveThreshold = FMath::FloorToInt(static_cast<float>(TargetEnemiesThisWave) * NextWaveAliveRatioThreshold);
+	if (AliveEnemyCount > AliveThreshold)
+	{
+		return;
+	}
+
+	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(UGameplayStatics::GetPlayerController(GetWorld(), 0)))
+	{
+		ShooterPC->SetObjectiveText(FText::Format(
+			FText::FromString(TEXT("Wave {0} almost cleared. Next wave in {1}s.")),
+			FText::AsNumber(CurrentWave),
+			FText::AsNumber(FMath::RoundToInt(TimeBetweenWaves))));
+	}
+
+	if (TimeBetweenWaves <= 0.0f)
+	{
+		StartNextWave();
+		return;
+	}
+
+	GetWorld()->GetTimerManager().SetTimer(NextWaveTimerHandle, this, &AShooterGameMode::StartNextWave, TimeBetweenWaves, false);
+}
+
+void AShooterGameMode::StopWaveSystem()
+{
+	GetWorld()->GetTimerManager().ClearTimer(NextWaveTimerHandle);
+	GetWorld()->GetTimerManager().ClearTimer(SpawnEnemyTimerHandle);
+	bIsSpawningWave = false;
 }
