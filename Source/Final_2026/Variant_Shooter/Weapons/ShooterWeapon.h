@@ -202,6 +202,9 @@ public:
 	UFUNCTION(BlueprintPure, Category="Weapon")
 	USkeletalMeshComponent* GetFirstPersonMesh() const { return FirstPersonMesh; };
 
+	/** Requests a manual reload if this weapon can reload. */
+	void RequestReload();
+
 	/** Returns the third person mesh */
 	UFUNCTION(BlueprintPure, Category="Weapon")
 	USkeletalMeshComponent* GetThirdPersonMesh() const { return ThirdPersonMesh; };

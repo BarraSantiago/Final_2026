@@ -321,6 +321,11 @@ const TSubclassOf<UAnimInstance>& AShooterWeapon::GetThirdPersonAnimInstanceClas
 	return ThirdPersonAnimInstanceClass;
 }
 
+void AShooterWeapon::RequestReload()
+{
+	StartReload();
+}
+
 bool AShooterWeapon::CanFireNow() const
 {
 	return !bIsReloading && CurrentBullets > 0;

@@ -43,6 +43,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category ="Input")
 	UInputAction* SwitchWeaponAction;
 
+	/** Reload weapon input action. */
+	UPROPERTY(EditAnywhere, Category ="Input")
+	UInputAction* ReloadAction;
+
 	/** Manual interaction input action. */
 	UPROPERTY(EditAnywhere, Category ="Input")
 	UInputAction* InteractAction;
@@ -142,6 +146,10 @@ public:
 	/** Handles switch weapon input */
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void DoSwitchWeapon();
+
+	/** Handles manual reload input. */
+	UFUNCTION(BlueprintCallable, Category="Input")
+	void DoReload();
 
 	/** Handles manual interaction input. */
 	UFUNCTION(BlueprintCallable, Category="Input")

@@ -11,6 +11,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "Camera/CameraComponent.h"
+#include "InputCoreTypes.h"
 #include "TimerManager.h"
 #include "ShooterGameMode.h"
 
@@ -76,11 +77,20 @@ void AShooterCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 			EnhancedInputComponent->BindAction(SwitchWeaponAction, ETriggerEvent::Triggered, this, &AShooterCharacter::DoSwitchWeapon);
 		}
 
+		// Reload weapon
+		if (ReloadAction)
+		{
+			EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &AShooterCharacter::DoReload);
+		}
+
 		if (InteractAction)
 		{
 			EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &AShooterCharacter::DoInteract);
 		}
 	}
+
+	// Fallback for projects that haven't set a dedicated reload Input Action yet.
+	PlayerInputComponent->BindKey(EKeys::R, IE_Pressed, this, &AShooterCharacter::DoReload);
 
 }
 
@@ -155,6 +165,14 @@ void AShooterCharacter::DoSwitchWeapon()
 	}
 }
 
+void AShooterCharacter::DoReload()
+{
+	if (CurrentWeapon)
+	{
+		CurrentWeapon->RequestReload();
+	}
+}
+
 void AShooterCharacter::DoInteract()
 {
 	if (!IsValid(FocusedInteractableActor))
@@ -204,7 +222,26 @@ bool AShooterCharacter::TryAddAmmo(EShooterWeaponSlot Slot, int32 AmmoToAdd)
 	}
 
 	AShooterWeapon* Weapon = FindWeaponBySlot(Slot);
-	return IsValid(Weapon) && Weapon->AddAmmo(AmmoToAdd) > 0;
+	if (IsValid(Weapon) && Weapon->AddAmmo(AmmoToAdd) > 0)
+	{
+		return true;
+	}
+
+	// Fallbacks: still grant ammo if the pickup slot doesn't match the current loadout setup.
+	if (IsValid(CurrentWeapon) && CurrentWeapon->AddAmmo(AmmoToAdd) > 0)
+	{
+		return true;
+	}
+
+	for (AShooterWeapon* OwnedWeapon : OwnedWeapons)
+	{
+		if (IsValid(OwnedWeapon) && OwnedWeapon != CurrentWeapon && OwnedWeapon->AddAmmo(AmmoToAdd) > 0)
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 float AShooterCharacter::GetHealthPercent() const
@@ -395,6 +432,8 @@ void AShooterCharacter::UpdateInteractionPrompt(bool bVisible, const FText& Obje
 
 void AShooterCharacter::Die()
 {
+	bool bShouldScheduleRespawn = true;
+
 	// deactivate the weapon
 	if (IsValid(CurrentWeapon))
 	{
@@ -409,6 +448,7 @@ void AShooterCharacter::Die()
 		if (IsPlayerControlled())
 		{
 			GM->NotifyPlayerDied();
+			bShouldScheduleRespawn = GM->ShouldRespawnPlayerOnDeath();
 		}
 	}
 		
@@ -426,8 +466,11 @@ void AShooterCharacter::Die()
 	// call the BP handler
 	BP_OnDeath();
 
-	// schedule character respawn
-	GetWorld()->GetTimerManager().SetTimer(RespawnTimer, this, &AShooterCharacter::OnRespawn, RespawnTime, false);
+	if (bShouldScheduleRespawn)
+	{
+		// schedule character respawn
+		GetWorld()->GetTimerManager().SetTimer(RespawnTimer, this, &AShooterCharacter::OnRespawn, RespawnTime, false);
+	}
 }
 
 void AShooterCharacter::OnRespawn()
