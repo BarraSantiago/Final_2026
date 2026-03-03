@@ -19,4 +19,9 @@ public:
 	/** Allows Blueprint to update score sub-widgets */
 	UFUNCTION(BlueprintImplementableEvent, Category="Shooter", meta = (DisplayName = "Update Score"))
 	void BP_UpdateScore(uint8 TeamByte, int32 Score);
+	
+	
+	/** Shows final ending results at end of run. */
+	UFUNCTION(BlueprintImplementableEvent, Category="Shooter", meta=(DisplayName = "ShowEnding"))
+	void BP_ShowEnding(const FName& EndingId, const FText& EndingText, bool bWon);
 };

@@ -39,8 +39,4 @@ public:
 	/** Updates run kill counter. */
 	UFUNCTION(BlueprintImplementableEvent, Category="Shooter", meta=(DisplayName = "SetKillCount"))
 	void BP_SetKillCount(int32 KillCount);
-
-	/** Shows final ending results at end of run. */
-	UFUNCTION(BlueprintImplementableEvent, Category="Shooter", meta=(DisplayName = "ShowEnding"))
-	void BP_ShowEnding(const FName& EndingId, const FText& EndingText, bool bWon);
 };
