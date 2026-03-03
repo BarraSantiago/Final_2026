@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "ShooterUI.h"
 #include "GameFramework/PlayerController.h"
 #include "ShooterPlayerController.generated.h"
 
@@ -51,6 +52,7 @@ protected:
 
 	/** Pointer to the bullet counter UI widget */
 	TObjectPtr<UShooterBulletCounterUI> BulletCounterUI;
+	TObjectPtr<UShooterUI> PlayerUI;
 
 protected:
 

@@ -11,6 +11,7 @@
 #include "ShooterBulletCounterUI.h"
 #include "ShooterGameMode.h"
 #include "Final_2026.h"
+#include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 
 void AShooterPlayerController::BeginPlay()
@@ -29,27 +30,35 @@ void AShooterPlayerController::BeginPlay()
 			{
 				// add the controls to the player screen
 				MobileControlsWidget->AddToPlayerScreen(0);
-
-			} else {
-
+			}
+			else
+			{
 				UE_LOG(LogFinal_2026, Error, TEXT("Could not spawn mobile controls widget."));
-
 			}
 		}
 
 		// create the bullet counter widget and add it to the screen
 		BulletCounterUI = CreateWidget<UShooterBulletCounterUI>(this, BulletCounterUIClass);
+		
+		TArray<UUserWidget*> FoundWidgets;
+		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(GetWorld(), FoundWidgets, UShooterUI::StaticClass(), false);
+		if (FoundWidgets.Num() > 0)
+		{
+			PlayerUI = Cast<UShooterUI>(FoundWidgets[0]);
+		}
+		else
+		{
+			UE_LOG(LogFinal_2026, Error, TEXT("Could not find ShooterUI widget in the level."));
+		}
 
 		if (BulletCounterUI)
 		{
 			BulletCounterUI->AddToPlayerScreen(0);
-
-		} else {
-
-			UE_LOG(LogFinal_2026, Error, TEXT("Could not spawn bullet counter widget."));
-
 		}
-		
+		else
+		{
+			UE_LOG(LogFinal_2026, Error, TEXT("Could not spawn bullet counter widget."));
+		}
 	}
 }
 
@@ -61,7 +70,8 @@ void AShooterPlayerController::SetupInputComponent()
 	if (IsLocalPlayerController())
 	{
 		// add the input mapping contexts
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<
+			UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
 		{
 			for (UInputMappingContext* CurrentContext : DefaultMappingContexts)
 			{
@@ -96,7 +106,8 @@ void AShooterPlayerController::OnPossess(APawn* InPawn)
 		// subscribe to the pawn's delegates
 		ShooterCharacter->OnBulletCountUpdated.AddDynamic(this, &AShooterPlayerController::OnBulletCountUpdated);
 		ShooterCharacter->OnDamaged.AddDynamic(this, &AShooterPlayerController::OnPawnDamaged);
-		ShooterCharacter->OnInteractionPromptUpdated.AddDynamic(this, &AShooterPlayerController::OnInteractionPromptUpdated);
+		ShooterCharacter->OnInteractionPromptUpdated.AddDynamic(
+			this, &AShooterPlayerController::OnInteractionPromptUpdated);
 
 		// force update the life bar
 		ShooterCharacter->OnDamaged.Broadcast(1.0f);
@@ -136,7 +147,8 @@ void AShooterPlayerController::OnPawnDestroyed(AActor* DestroyedActor)
 		// spawn a character at the player start
 		const FTransform SpawnTransform = RandomPlayerStart->GetActorTransform();
 
-		if (AShooterCharacter* RespawnedCharacter = GetWorld()->SpawnActor<AShooterCharacter>(CharacterClass, SpawnTransform))
+		if (AShooterCharacter* RespawnedCharacter = GetWorld()->SpawnActor<AShooterCharacter>(
+			CharacterClass, SpawnTransform))
 		{
 			// possess the character
 			Possess(RespawnedCharacter);
@@ -197,6 +209,6 @@ void AShooterPlayerController::ShowEnding(const FName& EndingId, const FText& En
 {
 	if (IsValid(BulletCounterUI))
 	{
-		BulletCounterUI->BP_ShowEnding(EndingId, EndingText, bWon);
+		PlayerUI->BP_ShowEnding(EndingId, EndingText, bWon);
 	}
 }
