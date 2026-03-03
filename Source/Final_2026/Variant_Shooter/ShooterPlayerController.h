@@ -10,6 +10,7 @@
 class UInputMappingContext;
 class AShooterCharacter;
 class UShooterBulletCounterUI;
+class UUserWidget;
 
 /**
  *  Simple PlayerController for a first person shooter game
@@ -46,6 +47,14 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Shooter|UI")
 	TSubclassOf<UShooterBulletCounterUI> BulletCounterUIClass;
 
+	/** Type of death menu widget to spawn on player death. */
+	UPROPERTY(EditAnywhere, Category="Shooter|UI")
+	TSubclassOf<UUserWidget> DeathMenuUIClass;
+
+	/** Level name used by the death menu "Main Menu" action. */
+	UPROPERTY(EditAnywhere, Category="Shooter|UI")
+	FName MainMenuLevelName = FName("MainMenu");
+
 	/** Tag to grant the possessed pawn to flag it as the player */
 	UPROPERTY(EditAnywhere, Category="Shooter|Player")
 	FName PlayerPawnTag = FName("Player");
@@ -53,6 +62,7 @@ protected:
 	/** Pointer to the bullet counter UI widget */
 	TObjectPtr<UShooterBulletCounterUI> BulletCounterUI;
 	TObjectPtr<UShooterUI> PlayerUI;
+	TObjectPtr<UUserWidget> DeathMenuUI;
 
 protected:
 
@@ -94,4 +104,24 @@ public:
 
 	/** Push ending result to HUD widgets. */
 	void ShowEnding(const FName& EndingId, const FText& EndingText, bool bWon);
+
+	/** Opens the death menu and switches input to UI mode. */
+	UFUNCTION(BlueprintCallable, Category="Shooter|Death Menu")
+	void ShowDeathMenu();
+
+	/** Hides the death menu and restores gameplay input mode. */
+	UFUNCTION(BlueprintCallable, Category="Shooter|Death Menu")
+	void HideDeathMenu();
+
+	/** Restarts the currently loaded map. */
+	UFUNCTION(BlueprintCallable, Category="Shooter|Death Menu")
+	void RestartCurrentLevel();
+
+	/** Opens the configured main menu map. */
+	UFUNCTION(BlueprintCallable, Category="Shooter|Death Menu")
+	void ReturnToMainMenu();
+
+	/** Exits the game application. */
+	UFUNCTION(BlueprintCallable, Category="Shooter|Death Menu")
+	void QuitToDesktop();
 };

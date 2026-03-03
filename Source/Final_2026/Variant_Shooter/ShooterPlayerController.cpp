@@ -12,6 +12,7 @@
 #include "ShooterGameMode.h"
 #include "Final_2026.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 
 void AShooterPlayerController::BeginPlay()
@@ -59,6 +60,12 @@ void AShooterPlayerController::BeginPlay()
 		{
 			UE_LOG(LogFinal_2026, Error, TEXT("Could not spawn bullet counter widget."));
 		}
+
+		FInputModeGameOnly InputMode;
+		SetInputMode(InputMode);
+		bShowMouseCursor = false;
+		SetIgnoreMoveInput(false);
+		SetIgnoreLookInput(false);
 	}
 }
 
@@ -94,6 +101,9 @@ void AShooterPlayerController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
 
+	// Ensure gameplay input is restored when re-possessing after a respawn.
+	HideDeathMenu();
+
 	// subscribe to the pawn's OnDestroyed delegate
 	InPawn->OnDestroyed.AddDynamic(this, &AShooterPlayerController::OnPawnDestroyed);
 
@@ -124,7 +134,7 @@ void AShooterPlayerController::OnPawnDestroyed(AActor* DestroyedActor)
 
 	if (const AShooterGameMode* ShooterGameMode = GetWorld()->GetAuthGameMode<AShooterGameMode>())
 	{
-		if (ShooterGameMode->IsQuestEnded())
+		if (ShooterGameMode->IsQuestEnded() || !ShooterGameMode->ShouldRespawnPlayerOnDeath())
 		{
 			return;
 		}
@@ -147,8 +157,11 @@ void AShooterPlayerController::OnPawnDestroyed(AActor* DestroyedActor)
 		// spawn a character at the player start
 		const FTransform SpawnTransform = RandomPlayerStart->GetActorTransform();
 
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
 		if (AShooterCharacter* RespawnedCharacter = GetWorld()->SpawnActor<AShooterCharacter>(
-			CharacterClass, SpawnTransform))
+			CharacterClass, SpawnTransform, SpawnParams))
 		{
 			// possess the character
 			Possess(RespawnedCharacter);
@@ -207,8 +220,84 @@ void AShooterPlayerController::SetKillCount(int32 KillCount)
 
 void AShooterPlayerController::ShowEnding(const FName& EndingId, const FText& EndingText, bool bWon)
 {
-	if (IsValid(BulletCounterUI))
+	if (IsValid(PlayerUI))
 	{
 		PlayerUI->BP_ShowEnding(EndingId, EndingText, bWon);
 	}
+}
+
+void AShooterPlayerController::ShowDeathMenu()
+{
+	if (!IsLocalPlayerController())
+	{
+		return;
+	}
+
+	if (!IsValid(DeathMenuUI) && DeathMenuUIClass)
+	{
+		DeathMenuUI = CreateWidget<UUserWidget>(this, DeathMenuUIClass);
+	}
+
+	if (IsValid(DeathMenuUI) && !DeathMenuUI->IsInViewport())
+	{
+		DeathMenuUI->AddToViewport(100);
+	}
+
+	FInputModeUIOnly InputMode;
+	if (IsValid(DeathMenuUI))
+	{
+		InputMode.SetWidgetToFocus(DeathMenuUI->TakeWidget());
+	}
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+
+	SetInputMode(InputMode);
+	bShowMouseCursor = true;
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+	SetPause(true);
+}
+
+void AShooterPlayerController::HideDeathMenu()
+{
+	if (IsValid(DeathMenuUI))
+	{
+		DeathMenuUI->RemoveFromParent();
+	}
+
+	FInputModeGameOnly InputMode;
+	SetInputMode(InputMode);
+	bShowMouseCursor = false;
+	SetIgnoreMoveInput(false);
+	SetIgnoreLookInput(false);
+	SetPause(false);
+}
+
+void AShooterPlayerController::RestartCurrentLevel()
+{
+	HideDeathMenu();
+
+	const FString CurrentLevelName = UGameplayStatics::GetCurrentLevelName(this, true);
+	if (!CurrentLevelName.IsEmpty())
+	{
+		UGameplayStatics::OpenLevel(this, FName(*CurrentLevelName), true);
+	}
+}
+
+void AShooterPlayerController::ReturnToMainMenu()
+{
+	HideDeathMenu();
+
+	if (MainMenuLevelName.IsNone())
+	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("MainMenuLevelName is not set."));
+		return;
+	}
+
+	UGameplayStatics::OpenLevel(this, MainMenuLevelName, true);
+}
+
+void AShooterPlayerController::QuitToDesktop()
+{
+	HideDeathMenu();
+	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
 }
