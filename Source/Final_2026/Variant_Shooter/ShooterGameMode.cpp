@@ -8,6 +8,7 @@
 #include "Interaction/ShooterObjectiveDoor.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
+#include "GameFramework/Controller.h"
 #include "GameFramework/PlayerStart.h"
 #include "TimerManager.h"
 
@@ -29,7 +30,8 @@ void AShooterGameMode::BeginPlay()
 	if (DoorUnlockMode == EShooterDoorUnlockMode::SurvivalTimer)
 	{
 		SurvivalUnlockTimestamp = GetWorld()->GetTimeSeconds() + SurvivalUnlockTime;
-		GetWorld()->GetTimerManager().SetTimer(SurvivalTimerHandle, this, &AShooterGameMode::UpdateSurvivalCountdown, 0.1f, true);
+		GetWorld()->GetTimerManager().SetTimer(SurvivalTimerHandle, this, &AShooterGameMode::UpdateSurvivalCountdown,
+		                                       0.1f, true);
 	}
 
 	UpdateObjectiveText();
@@ -136,7 +138,8 @@ void AShooterGameMode::NotifyPlayerDied()
 	GetWorld()->GetTimerManager().ClearTimer(SurvivalTimerHandle);
 	StopWaveSystem();
 
-	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(UGameplayStatics::GetPlayerController(GetWorld(), 0)))
+	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(
+		UGameplayStatics::GetPlayerController(GetWorld(), 0)))
 	{
 		ShooterPC->SetObjectiveText(FText::FromString(TEXT("You died.")));
 		ShooterPC->ShowDeathMenu();
@@ -170,14 +173,16 @@ void AShooterGameMode::UpdateObjectiveText()
 
 	if (bDoorUnlocked)
 	{
-		ShooterPC->SetObjectiveText(FText::FromString(TEXT("Door unlocked. Escape now or keep fighting for a better ending.")));
+		ShooterPC->SetObjectiveText(
+			FText::FromString(TEXT("Door unlocked. Escape now or keep fighting for a better ending.")));
 		return;
 	}
 
 	if (DoorUnlockMode == EShooterDoorUnlockMode::KeyPickup)
 	{
 		const FText ObjectiveText = FText::Format(
-			FText::FromString(TEXT("Find Key_asset_0001 to unlock the Unassuming Wooden Door of Ultimate Destiny. ({0}/{1})")),
+			FText::FromString(
+				TEXT("Find Key_asset_0001 to unlock the Unassuming Wooden Door of Ultimate Destiny. ({0}/{1})")),
 			FText::AsNumber(CurrentKeyCount),
 			FText::AsNumber(RequiredKeyCount));
 		ShooterPC->SetObjectiveText(ObjectiveText);
@@ -197,7 +202,8 @@ void AShooterGameMode::UpdateSurvivalCountdown()
 
 	const float RemainingTime = FMath::Max(0.0f, SurvivalUnlockTimestamp - GetWorld()->GetTimeSeconds());
 
-	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(UGameplayStatics::GetPlayerController(GetWorld(), 0)))
+	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(
+		UGameplayStatics::GetPlayerController(GetWorld(), 0)))
 	{
 		ShooterPC->SetObjectiveTimer(RemainingTime);
 	}
@@ -222,7 +228,8 @@ void AShooterGameMode::UnlockDoor()
 		ObjectiveDoor->SetDoorUnlocked(true);
 	}
 
-	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(UGameplayStatics::GetPlayerController(GetWorld(), 0)))
+	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(
+		UGameplayStatics::GetPlayerController(GetWorld(), 0)))
 	{
 		ShooterPC->SetObjectiveTimer(0.0f);
 	}
@@ -234,6 +241,7 @@ void AShooterGameMode::EndRun(const FName& EndingId, const FText& EndingText, bo
 {
 	if (bQuestEnded)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("B quest unfinished."));
 		return;
 	}
 
@@ -241,7 +249,8 @@ void AShooterGameMode::EndRun(const FName& EndingId, const FText& EndingText, bo
 	GetWorld()->GetTimerManager().ClearTimer(SurvivalTimerHandle);
 	StopWaveSystem();
 
-	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(UGameplayStatics::GetPlayerController(GetWorld(), 0)))
+	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(
+		UGameplayStatics::GetPlayerController(GetWorld(), 0)))
 	{
 		ShooterPC->SetObjectiveText(FText::FromString(TEXT("Run finished.")));
 		ShooterPC->ShowEnding(EndingId, EndingText, bWon);
@@ -293,6 +302,8 @@ void AShooterGameMode::InitializeWaveSystem()
 	}
 
 	EnemySpawnPoints.Reset();
+	EnemySpawnPointTransforms.Reset();
+	WaveEnemyControllerClass = nullptr;
 
 	TArray<AActor*> FoundSpawnPoints;
 	if (!EnemySpawnPointTag.IsNone())
@@ -311,6 +322,7 @@ void AShooterGameMode::InitializeWaveSystem()
 		if (IsValid(SpawnPoint))
 		{
 			EnemySpawnPoints.Add(SpawnPoint);
+			EnemySpawnPointTransforms.Add(SpawnPoint->GetActorTransform());
 		}
 	}
 
@@ -318,15 +330,43 @@ void AShooterGameMode::InitializeWaveSystem()
 	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AShooterNPC::StaticClass(), ExistingEnemies);
 	AliveEnemyCount = ExistingEnemies.Num();
 
+	// If no explicit spawn points were tagged, reuse current enemy locations.
+	// This keeps wave spawns in AI-valid areas in levels that start with hand-placed enemies.
+	if (FoundSpawnPoints.Num() == 0 && ExistingEnemies.Num() > 0)
+	{
+		EnemySpawnPoints.Reset();
+		EnemySpawnPointTransforms.Reset();
+
+		for (AActor* ExistingEnemyActor : ExistingEnemies)
+		{
+			if (IsValid(ExistingEnemyActor))
+			{
+				EnemySpawnPoints.Add(ExistingEnemyActor);
+				EnemySpawnPointTransforms.Add(ExistingEnemyActor->GetActorTransform());
+			}
+		}
+	}
+
 	if (AliveEnemyCount > 0)
 	{
+		// Reuse class/controller from already-working placed enemies.
+		if (AShooterNPC* ExistingEnemy = Cast<AShooterNPC>(ExistingEnemies[0]))
+		{
+			WaveEnemyClass = ExistingEnemy->GetClass();
+
+			if (AController* ExistingController = ExistingEnemy->GetController())
+			{
+				WaveEnemyControllerClass = ExistingController->GetClass();
+			}
+		}
+
 		CurrentWave = 1;
 		TargetEnemiesThisWave = AliveEnemyCount;
 		SpawnedEnemiesThisWave = TargetEnemiesThisWave;
 		return;
 	}
 
-	if (!WaveEnemyClass || EnemySpawnPoints.Num() == 0)
+	if (!WaveEnemyClass || EnemySpawnPointTransforms.Num() == 0)
 	{
 		return;
 	}
@@ -337,12 +377,13 @@ void AShooterGameMode::InitializeWaveSystem()
 		return;
 	}
 
-	GetWorld()->GetTimerManager().SetTimer(NextWaveTimerHandle, this, &AShooterGameMode::StartNextWave, FirstWaveDelay, false);
+	GetWorld()->GetTimerManager().SetTimer(NextWaveTimerHandle, this, &AShooterGameMode::StartNextWave, FirstWaveDelay,
+	                                       false);
 }
 
 void AShooterGameMode::StartNextWave()
 {
-	if (bQuestEnded || !bEnableWaveSystem || !WaveEnemyClass || EnemySpawnPoints.Num() == 0)
+	if (bQuestEnded || !bEnableWaveSystem || !WaveEnemyClass || EnemySpawnPointTransforms.Num() == 0)
 	{
 		return;
 	}
@@ -354,7 +395,8 @@ void AShooterGameMode::StartNextWave()
 	SpawnedEnemiesThisWave = 0;
 	bIsSpawningWave = true;
 
-	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(UGameplayStatics::GetPlayerController(GetWorld(), 0)))
+	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(
+		UGameplayStatics::GetPlayerController(GetWorld(), 0)))
 	{
 		ShooterPC->SetObjectiveText(FText::Format(
 			FText::FromString(TEXT("Wave {0} started.")),
@@ -376,7 +418,8 @@ void AShooterGameMode::StartNextWave()
 
 	if (SpawnedEnemiesThisWave < TargetEnemiesThisWave)
 	{
-		GetWorld()->GetTimerManager().SetTimer(SpawnEnemyTimerHandle, this, &AShooterGameMode::SpawnOneWaveEnemy, TimeBetweenEnemySpawns, true);
+		GetWorld()->GetTimerManager().SetTimer(SpawnEnemyTimerHandle, this, &AShooterGameMode::SpawnOneWaveEnemy,
+		                                       TimeBetweenEnemySpawns, true);
 	}
 	else
 	{
@@ -386,7 +429,7 @@ void AShooterGameMode::StartNextWave()
 
 void AShooterGameMode::SpawnOneWaveEnemy()
 {
-	if (bQuestEnded || !bEnableWaveSystem || !WaveEnemyClass || EnemySpawnPoints.Num() == 0)
+	if (bQuestEnded || !bEnableWaveSystem || !WaveEnemyClass || EnemySpawnPointTransforms.Num() == 0)
 	{
 		StopWaveSystem();
 		return;
@@ -399,19 +442,38 @@ void AShooterGameMode::SpawnOneWaveEnemy()
 		return;
 	}
 
-	const int32 SpawnPointIdx = FMath::RandRange(0, EnemySpawnPoints.Num() - 1);
-	AActor* SpawnPoint = EnemySpawnPoints[SpawnPointIdx].Get();
+	const int32 SpawnPointIdx = FMath::RandRange(0, EnemySpawnPointTransforms.Num() - 1);
+	const FTransform SpawnTransform = EnemySpawnPointTransforms[SpawnPointIdx];
 
-	if (IsValid(SpawnPoint))
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+	if (AShooterNPC* SpawnedEnemy = GetWorld()->SpawnActor<AShooterNPC>(WaveEnemyClass, SpawnTransform, SpawnParams))
 	{
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-
-		if (IsValid(GetWorld()->SpawnActor<AShooterNPC>(WaveEnemyClass, SpawnPoint->GetActorTransform(), SpawnParams)))
+		if (WaveEnemyControllerClass)
 		{
-			++AliveEnemyCount;
+			FActorSpawnParameters ControllerSpawnParams;
+			ControllerSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+			if (AController* NewController = GetWorld()->SpawnActor<AController>(
+				WaveEnemyControllerClass,
+				SpawnedEnemy->GetActorLocation(),
+				SpawnedEnemy->GetActorRotation(),
+				ControllerSpawnParams))
+			{
+				NewController->Possess(SpawnedEnemy);
+			}
 		}
+		else
+		{
+			// Only fallback if no explicit class was captured
+			SpawnedEnemy->SpawnDefaultController();
+		}
+
+		++AliveEnemyCount;
 	}
+
 
 	++SpawnedEnemiesThisWave;
 
@@ -429,7 +491,7 @@ void AShooterGameMode::TryScheduleNextWave()
 		return;
 	}
 
-	if (!WaveEnemyClass || EnemySpawnPoints.Num() == 0)
+	if (!WaveEnemyClass || EnemySpawnPointTransforms.Num() == 0)
 	{
 		return;
 	}
@@ -439,13 +501,15 @@ void AShooterGameMode::TryScheduleNextWave()
 		return;
 	}
 
-	const int32 AliveThreshold = FMath::FloorToInt(static_cast<float>(TargetEnemiesThisWave) * NextWaveAliveRatioThreshold);
+	const int32 AliveThreshold = FMath::FloorToInt(
+		static_cast<float>(TargetEnemiesThisWave) * NextWaveAliveRatioThreshold);
 	if (AliveEnemyCount > AliveThreshold)
 	{
 		return;
 	}
 
-	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(UGameplayStatics::GetPlayerController(GetWorld(), 0)))
+	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(
+		UGameplayStatics::GetPlayerController(GetWorld(), 0)))
 	{
 		ShooterPC->SetObjectiveText(FText::Format(
 			FText::FromString(TEXT("Wave {0} almost cleared. Next wave in {1}s.")),
@@ -459,7 +523,8 @@ void AShooterGameMode::TryScheduleNextWave()
 		return;
 	}
 
-	GetWorld()->GetTimerManager().SetTimer(NextWaveTimerHandle, this, &AShooterGameMode::StartNextWave, TimeBetweenWaves, false);
+	GetWorld()->GetTimerManager().SetTimer(NextWaveTimerHandle, this, &AShooterGameMode::StartNextWave,
+	                                       TimeBetweenWaves, false);
 }
 
 void AShooterGameMode::StopWaveSystem()

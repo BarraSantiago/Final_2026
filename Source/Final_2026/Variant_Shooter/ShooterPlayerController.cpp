@@ -223,6 +223,11 @@ void AShooterPlayerController::ShowEnding(const FName& EndingId, const FText& En
 	if (IsValid(PlayerUI))
 	{
 		PlayerUI->BP_ShowEnding(EndingId, EndingText, bWon);
+		UE_LOG(LogFinal_2026, Log, TEXT("Showing ending: %s - %s"), *EndingId.ToString(), *EndingText.ToString());
+	}
+	else
+	{
+		UE_LOG(LogFinal_2026, Error, TEXT("PlayerUI is not valid. Cannot show ending."));
 	}
 }
 

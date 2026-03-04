@@ -183,9 +183,15 @@ EStateTreeRunStatus FStateTreeShootAtTargetTask::EnterState(FStateTreeExecutionC
 	{
 		// get the instance data
 		FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+		AShooterNPC* ShooterCharacter = Cast<AShooterNPC>(InstanceData.Character);
+
+		if (!IsValid(ShooterCharacter) || !IsValid(InstanceData.Target))
+		{
+			return EStateTreeRunStatus::Failed;
+		}
 
 		// tell the character to shoot the target
-		InstanceData.Character->StartShooting(InstanceData.Target);
+		ShooterCharacter->StartShooting(InstanceData.Target);
 	}
 
 	return EStateTreeRunStatus::Running;
@@ -198,9 +204,13 @@ void FStateTreeShootAtTargetTask::ExitState(FStateTreeExecutionContext& Context,
 	{
 		// get the instance data
 		FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+		AShooterNPC* ShooterCharacter = Cast<AShooterNPC>(InstanceData.Character);
 
 		// tell the character to stop shooting
-		InstanceData.Character->StopShooting();
+		if (IsValid(ShooterCharacter))
+		{
+			ShooterCharacter->StopShooting();
+		}
 	}
 }
 
@@ -218,25 +228,42 @@ EStateTreeRunStatus FStateTreeSenseEnemiesTask::EnterState(FStateTreeExecutionCo
 	{
 		// get the instance data
 		FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+		AShooterNPC* ShooterCharacter = Cast<AShooterNPC>(InstanceData.Character);
+
+		if (!IsValid(InstanceData.Controller) || !IsValid(ShooterCharacter))
+		{
+			return EStateTreeRunStatus::Failed;
+		}
 
 		// bind the perception updated delegate on the controller
 		InstanceData.Controller->OnShooterPerceptionUpdated.BindLambda(
 			[WeakContext = Context.MakeWeakExecutionContext()](AActor* SensedActor, const FAIStimulus& Stimulus)
 			{
+				if (!IsValid(SensedActor))
+				{
+					return;
+				}
+
 				// get the instance data inside the lambda
 				const FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
 
 				if (FInstanceDataType* LambdaInstanceData = StrongContext.GetInstanceDataPtr<FInstanceDataType>())
 				{
+					AShooterNPC* LambdaShooterCharacter = Cast<AShooterNPC>(LambdaInstanceData->Character);
+					if (!IsValid(LambdaShooterCharacter) || !IsValid(LambdaInstanceData->Controller))
+					{
+						return;
+					}
+
 					if (SensedActor->ActorHasTag(LambdaInstanceData->SenseTag))
 					{
 						bool bDirectLOS = false;
 
 						// calculate the direction of the stimulus
-						const FVector StimulusDir = (Stimulus.StimulusLocation - LambdaInstanceData->Character->GetActorLocation()).GetSafeNormal();
+						const FVector StimulusDir = (Stimulus.StimulusLocation - LambdaShooterCharacter->GetActorLocation()).GetSafeNormal();
 
 						// infer the angle from the dot product between the character facing and the stimulus direction
-						const float DirDot = FVector::DotProduct(StimulusDir, LambdaInstanceData->Character->GetActorForwardVector());
+						const float DirDot = FVector::DotProduct(StimulusDir, LambdaShooterCharacter->GetActorForwardVector());
 						const float MaxDot = FMath::Cos(FMath::DegreesToRadians(LambdaInstanceData->DirectLineOfSightCone));
 
 						// is the direction within our perception cone?
@@ -244,13 +271,13 @@ EStateTreeRunStatus FStateTreeSenseEnemiesTask::EnterState(FStateTreeExecutionCo
 						{
 							// run a line trace between the character and the sensed actor
 							FCollisionQueryParams QueryParams;
-							QueryParams.AddIgnoredActor(LambdaInstanceData->Character);
+							QueryParams.AddIgnoredActor(LambdaShooterCharacter);
 							QueryParams.AddIgnoredActor(SensedActor);
 
 							FHitResult OutHit;
 
 							// we have direct line of sight if this trace is unobstructed
-							bDirectLOS = !LambdaInstanceData->Character->GetWorld()->LineTraceSingleByChannel(OutHit, LambdaInstanceData->Character->GetActorLocation(), SensedActor->GetActorLocation(), ECC_Visibility, QueryParams);
+							bDirectLOS = !LambdaShooterCharacter->GetWorld()->LineTraceSingleByChannel(OutHit, LambdaShooterCharacter->GetActorLocation(), SensedActor->GetActorLocation(), ECC_Visibility, QueryParams);
 
 						}
 
@@ -296,10 +323,15 @@ EStateTreeRunStatus FStateTreeSenseEnemiesTask::EnterState(FStateTreeExecutionCo
 		InstanceData.Controller->OnShooterPerceptionForgotten.BindLambda(
 			[WeakContext = Context.MakeWeakExecutionContext()](AActor* SensedActor)
 			{
+				if (!IsValid(SensedActor))
+				{
+					return;
+				}
+
 				// get the instance data inside the lambda
 				FInstanceDataType* LambdaInstanceData = WeakContext.MakeStrongExecutionContext().GetInstanceDataPtr<FInstanceDataType>();
 
-				if (!LambdaInstanceData)
+				if (!LambdaInstanceData || !IsValid(LambdaInstanceData->Controller))
 				{
 					return;
 				}
@@ -353,8 +385,11 @@ void FStateTreeSenseEnemiesTask::ExitState(FStateTreeExecutionContext& Context, 
 		FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 
 		// unbind the perception delegates
-		InstanceData.Controller->OnShooterPerceptionUpdated.Unbind();
-		InstanceData.Controller->OnShooterPerceptionForgotten.Unbind();
+		if (IsValid(InstanceData.Controller))
+		{
+			InstanceData.Controller->OnShooterPerceptionUpdated.Unbind();
+			InstanceData.Controller->OnShooterPerceptionForgotten.Unbind();
+		}
 	}
 }
 

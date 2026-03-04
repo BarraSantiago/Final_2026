@@ -23,12 +23,6 @@ class FINAL_2026_API AShooterNPC : public AFinal_2026Character, public IShooterW
 {
 	GENERATED_BODY()
 
-public:
-
-	/** Current HP for this character. It dies if it reaches zero through damage. */
-	UPROPERTY(BlueprintReadOnly, Category="Damage")
-	float CurrentHP = 100.0f;
-
 protected:
 
 	/** Archetype stats used for health, speed, and outgoing damage scaling. */
@@ -93,12 +87,11 @@ protected:
 	/** Deferred destruction on death timer */
 	FTimerHandle DeathTimer;
 
-public:
+	/** Called when HP is depleted and the character should die */
+	void Die();
 
-	/** Delegate called when this NPC dies */
-	FPawnDeathDelegate OnPawnDeath;
-
-protected:
+	/** Called after death to destroy the actor */
+	void DeferredDestruction();
 
 	/** Gameplay initialization */
 	virtual void BeginPlay() override;
@@ -107,14 +100,19 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 public:
+	/** Constructor */
+	AShooterNPC();
+	
+	/** Delegate called when this NPC dies */
+	FPawnDeathDelegate OnPawnDeath;
+
+	/** Current HP for this character. It dies if it reaches zero through damage. */
+	UPROPERTY(BlueprintReadOnly, Category="Damage")
+	float CurrentHP = 100.0f;
 
 	/** Handle incoming damage */
 	virtual float TakeDamage(float Damage, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
-
-public:
-
-	//~Begin IShooterWeaponHolder interface
-
+	
 	/** Attaches a weapon's meshes to the owner */
 	virtual void AttachWeaponMeshes(AShooterWeapon* Weapon) override;
 
@@ -144,18 +142,6 @@ public:
 
 	/** Notifies the owner that the weapon cooldown has expired and it's ready to shoot again */
 	virtual void OnSemiWeaponRefire() override;
-
-	//~End IShooterWeaponHolder interface
-
-protected:
-
-	/** Called when HP is depleted and the character should die */
-	void Die();
-
-	/** Called after death to destroy the actor */
-	void DeferredDestruction();
-
-public:
 
 	/** Signals this character to start shooting at the passed actor */
 	void StartShooting(AActor* ActorToShoot);

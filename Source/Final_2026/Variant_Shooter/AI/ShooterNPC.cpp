@@ -2,6 +2,8 @@
 
 
 #include "Variant_Shooter/AI/ShooterNPC.h"
+#include "Final_2026.h"
+#include "Variant_Shooter/AI/ShooterAIController.h"
 #include "ShooterWeapon.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Camera/CameraComponent.h"
@@ -12,12 +14,24 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "TimerManager.h"
 
+AShooterNPC::AShooterNPC()
+{
+	AIControllerClass = AShooterAIController::StaticClass();
+	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
+}
+
 void AShooterNPC::BeginPlay()
 {
 	Super::BeginPlay();
 
 	CurrentHP = ArchetypeStats.MaxHealth;
 	GetCharacterMovement()->MaxWalkSpeed = ArchetypeStats.MoveSpeed;
+
+	// Force a controller on authority so StateTree/AI logic starts reliably.
+	if (HasAuthority() && !Controller)
+	{
+		SpawnDefaultController();
+	}
 
 	// spawn the weapon
 	if (WeaponClass)
@@ -29,6 +43,12 @@ void AShooterNPC::BeginPlay()
 
 		Weapon = GetWorld()->SpawnActor<AShooterWeapon>(WeaponClass, GetActorTransform(), SpawnParams);
 	}
+
+	UE_LOG(LogFinal_2026, Log, TEXT("ShooterNPC BeginPlay - Controller valid: %s"), IsValid(GetController()) ? TEXT("true") : TEXT("false"));
+	if (IsValid(GetController()))
+	{
+		UE_LOG(LogFinal_2026, Log, TEXT("ShooterNPC BeginPlay - Controller: %s"), *GetController()->GetName());
+	}
 }
 
 void AShooterNPC::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -39,7 +59,8 @@ void AShooterNPC::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	GetWorld()->GetTimerManager().ClearTimer(DeathTimer);
 }
 
-float AShooterNPC::TakeDamage(float Damage, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+float AShooterNPC::TakeDamage(float Damage, struct FDamageEvent const& DamageEvent, AController* EventInstigator,
+                              AActor* DamageCauser)
 {
 	// ignore if already dead
 	if (bIsDead)
@@ -68,7 +89,8 @@ void AShooterNPC::AttachWeaponMeshes(AShooterWeapon* WeaponToAttach)
 	WeaponToAttach->AttachToActor(this, AttachmentRule);
 
 	// attach the weapon meshes
-	WeaponToAttach->GetFirstPersonMesh()->AttachToComponent(GetFirstPersonMesh(), AttachmentRule, FirstPersonWeaponSocket);
+	WeaponToAttach->GetFirstPersonMesh()->AttachToComponent(GetFirstPersonMesh(), AttachmentRule,
+	                                                        FirstPersonWeaponSocket);
 	WeaponToAttach->GetThirdPersonMesh()->AttachToComponent(GetMesh(), AttachmentRule, ThirdPersonWeaponSocket);
 }
 
@@ -111,13 +133,12 @@ FVector AShooterNPC::GetWeaponTargetLocation()
 		// get the aim direction and apply randomness in a cone
 		AimDir = (AimTarget - AimSource).GetSafeNormal();
 		AimDir = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(AimDir, AimVarianceHalfAngle);
-
-		
-	} else {
-
+	}
+	else
+	{
 		// no aim target, so just use the camera facing
-		AimDir = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(GetFirstPersonCameraComponent()->GetForwardVector(), AimVarianceHalfAngle);
-
+		AimDir = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(
+			GetFirstPersonCameraComponent()->GetForwardVector(), AimVarianceHalfAngle);
 	}
 
 	// calculate the unobstructed aim target location
@@ -196,7 +217,8 @@ void AShooterNPC::Die()
 	GetMesh()->SetPhysicsBlendWeight(1.0f);
 
 	// schedule actor destruction
-	GetWorld()->GetTimerManager().SetTimer(DeathTimer, this, &AShooterNPC::DeferredDestruction, DeferredDestructionTime, false);
+	GetWorld()->GetTimerManager().SetTimer(DeathTimer, this, &AShooterNPC::DeferredDestruction, DeferredDestructionTime,
+	                                       false);
 }
 
 void AShooterNPC::DeferredDestruction()

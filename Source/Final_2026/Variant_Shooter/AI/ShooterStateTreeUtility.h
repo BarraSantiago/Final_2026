@@ -204,9 +204,9 @@ struct FStateTreeShootAtTargetInstanceData
 {
 	GENERATED_BODY()
 
-	/** NPC that will do the shooting */
+	/** Actor from StateTree context expected to be a ShooterNPC */
 	UPROPERTY(EditAnywhere, Category = Context)
-	TObjectPtr<AShooterNPC> Character;
+	TObjectPtr<AActor> Character;
 
 	/** Target to shoot at */
 	UPROPERTY(EditAnywhere, Category = Input)
@@ -250,9 +250,9 @@ struct FStateTreeSenseEnemiesInstanceData
 	UPROPERTY(EditAnywhere, Category = Context)
 	TObjectPtr<AShooterAIController> Controller;
 
-	/** Sensing NPC */
+	/** Actor from StateTree context expected to be a ShooterNPC */
 	UPROPERTY(EditAnywhere, Category = Context)
-	TObjectPtr<AShooterNPC> Character;
+	TObjectPtr<AActor> Character;
 
 	/** Sensed actor to target */
 	UPROPERTY(EditAnywhere, Category = Output)

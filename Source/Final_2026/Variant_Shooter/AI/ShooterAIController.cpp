@@ -2,11 +2,13 @@
 
 
 #include "Variant_Shooter/AI/ShooterAIController.h"
+#include "Final_2026.h"
 #include "ShooterNPC.h"
 #include "Components/StateTreeAIComponent.h"
 #include "Perception/AIPerceptionComponent.h"
 #include "Navigation/PathFollowingComponent.h"
 #include "AI/Navigation/PathFollowingAgentInterface.h"
+
 
 AShooterAIController::AShooterAIController()
 {
@@ -19,12 +21,15 @@ AShooterAIController::AShooterAIController()
 	// subscribe to the AI perception delegates
 	AIPerception->OnTargetPerceptionUpdated.AddDynamic(this, &AShooterAIController::OnPerceptionUpdated);
 	AIPerception->OnTargetPerceptionForgotten.AddDynamic(this, &AShooterAIController::OnPerceptionForgotten);
+
+	UE_LOG(LogFinal_2026, Log, TEXT("ShooterAIController constructed"));
 }
 
 void AShooterAIController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
 
+	UE_LOG(LogFinal_2026, Log, TEXT("ShooterAIController possessing pawn: %s"), *InPawn->GetName());
 	// ensure we're possessing an NPC
 	if (AShooterNPC* NPC = Cast<AShooterNPC>(InPawn))
 	{
@@ -33,6 +38,13 @@ void AShooterAIController::OnPossess(APawn* InPawn)
 
 		// subscribe to the pawn's OnDeath delegate
 		NPC->OnPawnDeath.AddDynamic(this, &AShooterAIController::OnPawnDeath);
+	}
+
+	UE_LOG(LogFinal_2026, Log, TEXT("ShooterAIController OnPossess - StateTreeAI valid: %s"), IsValid(StateTreeAI) ? TEXT("true") : TEXT("false"));
+	// Ensure StateTree logic is active for dynamically spawned pawns as well.
+	if (IsValid(StateTreeAI))
+	{
+		StateTreeAI->RestartLogic();
 	}
 }
 

@@ -128,6 +128,12 @@ protected:
 	/** Enemy spawn points used by wave system. */
 	TArray<TObjectPtr<AActor>> EnemySpawnPoints;
 
+	/** Cached transforms used by wave spawning, so points remain valid even if source actors are destroyed. */
+	TArray<FTransform> EnemySpawnPointTransforms;
+
+	/** Runtime-resolved AI controller class used for wave-spawned enemies. */
+	TSubclassOf<AController> WaveEnemyControllerClass;
+
 	/** Current wave number. Starts at 0 before first wave. */
 	int32 CurrentWave = 0;
 
