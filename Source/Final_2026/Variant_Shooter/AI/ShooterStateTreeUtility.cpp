@@ -9,13 +9,91 @@
 #include "Perception/AIPerceptionComponent.h"
 #include "ShooterAIController.h"
 #include "StateTreeAsyncExecutionContext.h"
+#include "GameFramework/Pawn.h"
+
+namespace
+{
+	AShooterNPC* ResolveShooterCharacter(AActor* CharacterActor, AShooterAIController* FallbackController = nullptr)
+	{
+		if (AShooterNPC* ShooterCharacter = Cast<AShooterNPC>(CharacterActor))
+		{
+			return ShooterCharacter;
+		}
+
+		if (const AAIController* CandidateController = Cast<AAIController>(CharacterActor))
+		{
+			return Cast<AShooterNPC>(CandidateController->GetPawn());
+		}
+
+		if (IsValid(FallbackController))
+		{
+			return Cast<AShooterNPC>(FallbackController->GetPawn());
+		}
+
+		return nullptr;
+	}
+
+	bool IsValidEnemySenseTarget(const FStateTreeSenseEnemiesInstanceData& InstanceData, AActor* SensedActor)
+	{
+		if (!IsValid(SensedActor))
+		{
+			return false;
+		}
+
+		if (SensedActor->ActorHasTag(InstanceData.SenseTag))
+		{
+			return true;
+		}
+
+		if (const APawn* SensedPawn = Cast<APawn>(SensedActor))
+		{
+			return SensedPawn->IsPlayerControlled();
+		}
+
+		return false;
+	}
+
+	bool HasUnobstructedSight(const AShooterNPC* ShooterCharacter, const AActor* SensedActor, float DirectLineOfSightCone)
+	{
+		if (!IsValid(ShooterCharacter) || !IsValid(SensedActor))
+		{
+			return false;
+		}
+
+		const FVector StartLocation = ShooterCharacter->GetFirstPersonCameraComponent()
+			? ShooterCharacter->GetFirstPersonCameraComponent()->GetComponentLocation()
+			: ShooterCharacter->GetActorLocation();
+
+		const FVector EndLocation = SensedActor->GetActorLocation();
+		const FVector StimulusDir = (EndLocation - StartLocation).GetSafeNormal();
+
+		const float DirDot = FVector::DotProduct(StimulusDir, ShooterCharacter->GetActorForwardVector());
+		const float MaxDot = FMath::Cos(FMath::DegreesToRadians(DirectLineOfSightCone));
+		if (DirDot < MaxDot)
+		{
+			return false;
+		}
+
+		FCollisionQueryParams QueryParams;
+		QueryParams.AddIgnoredActor(ShooterCharacter);
+		QueryParams.AddIgnoredActor(SensedActor);
+
+		FHitResult OutHit;
+		return !ShooterCharacter->GetWorld()->LineTraceSingleByChannel(
+			OutHit,
+			StartLocation,
+			EndLocation,
+			ECC_Visibility,
+			QueryParams);
+	}
+}
 
 bool FStateTreeLineOfSightToTargetCondition::TestCondition(FStateTreeExecutionContext& Context) const
 {
 	const FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 
-	// ensure the target is valid
-	if (!IsValid(InstanceData.Target))
+	// ensure required data is valid
+	if (!IsValid(InstanceData.Character) || !IsValid(InstanceData.Target))
 	{
 		return !InstanceData.bMustHaveLineOfSight;
 	}
@@ -183,7 +261,7 @@ EStateTreeRunStatus FStateTreeShootAtTargetTask::EnterState(FStateTreeExecutionC
 	{
 		// get the instance data
 		FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-		AShooterNPC* ShooterCharacter = Cast<AShooterNPC>(InstanceData.Character);
+		AShooterNPC* ShooterCharacter = ResolveShooterCharacter(InstanceData.Character.Get());
 
 		if (!IsValid(ShooterCharacter) || !IsValid(InstanceData.Target))
 		{
@@ -204,7 +282,7 @@ void FStateTreeShootAtTargetTask::ExitState(FStateTreeExecutionContext& Context,
 	{
 		// get the instance data
 		FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-		AShooterNPC* ShooterCharacter = Cast<AShooterNPC>(InstanceData.Character);
+		AShooterNPC* ShooterCharacter = ResolveShooterCharacter(InstanceData.Character.Get());
 
 		// tell the character to stop shooting
 		if (IsValid(ShooterCharacter))
@@ -228,7 +306,7 @@ EStateTreeRunStatus FStateTreeSenseEnemiesTask::EnterState(FStateTreeExecutionCo
 	{
 		// get the instance data
 		FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-		AShooterNPC* ShooterCharacter = Cast<AShooterNPC>(InstanceData.Character);
+		AShooterNPC* ShooterCharacter = ResolveShooterCharacter(InstanceData.Character.Get(), InstanceData.Controller.Get());
 
 		if (!IsValid(InstanceData.Controller) || !IsValid(ShooterCharacter))
 		{
@@ -247,42 +325,28 @@ EStateTreeRunStatus FStateTreeSenseEnemiesTask::EnterState(FStateTreeExecutionCo
 				// get the instance data inside the lambda
 				const FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
 
-				if (FInstanceDataType* LambdaInstanceData = StrongContext.GetInstanceDataPtr<FInstanceDataType>())
+			if (FInstanceDataType* LambdaInstanceData = StrongContext.GetInstanceDataPtr<FInstanceDataType>())
+			{
+				AShooterNPC* LambdaShooterCharacter = ResolveShooterCharacter(
+					LambdaInstanceData->Character.Get(), LambdaInstanceData->Controller.Get());
+				if (!IsValid(LambdaShooterCharacter) || !IsValid(LambdaInstanceData->Controller))
 				{
-					AShooterNPC* LambdaShooterCharacter = Cast<AShooterNPC>(LambdaInstanceData->Character);
-					if (!IsValid(LambdaShooterCharacter) || !IsValid(LambdaInstanceData->Controller))
+					return;
+				}
+
+				if (IsValidEnemySenseTarget(*LambdaInstanceData, SensedActor))
+				{
+					bool bDirectLOS = Stimulus.WasSuccessfullySensed();
+					if (!bDirectLOS)
 					{
-						return;
+						bDirectLOS = HasUnobstructedSight(
+							LambdaShooterCharacter,
+							SensedActor,
+							LambdaInstanceData->DirectLineOfSightCone);
 					}
 
-					if (SensedActor->ActorHasTag(LambdaInstanceData->SenseTag))
-					{
-						bool bDirectLOS = false;
-
-						// calculate the direction of the stimulus
-						const FVector StimulusDir = (Stimulus.StimulusLocation - LambdaShooterCharacter->GetActorLocation()).GetSafeNormal();
-
-						// infer the angle from the dot product between the character facing and the stimulus direction
-						const float DirDot = FVector::DotProduct(StimulusDir, LambdaShooterCharacter->GetActorForwardVector());
-						const float MaxDot = FMath::Cos(FMath::DegreesToRadians(LambdaInstanceData->DirectLineOfSightCone));
-
-						// is the direction within our perception cone?
-						if (DirDot >= MaxDot)
-						{
-							// run a line trace between the character and the sensed actor
-							FCollisionQueryParams QueryParams;
-							QueryParams.AddIgnoredActor(LambdaShooterCharacter);
-							QueryParams.AddIgnoredActor(SensedActor);
-
-							FHitResult OutHit;
-
-							// we have direct line of sight if this trace is unobstructed
-							bDirectLOS = !LambdaShooterCharacter->GetWorld()->LineTraceSingleByChannel(OutHit, LambdaShooterCharacter->GetActorLocation(), SensedActor->GetActorLocation(), ECC_Visibility, QueryParams);
-
-						}
-
-						// check if we have a direct line of sight to the stimulus
-						if (bDirectLOS)
+					// check if we have a direct line of sight to the stimulus
+					if (bDirectLOS)
 						{
 							// set the controller's target
 							LambdaInstanceData->Controller->SetCurrentTarget(SensedActor);
@@ -290,12 +354,13 @@ EStateTreeRunStatus FStateTreeSenseEnemiesTask::EnterState(FStateTreeExecutionCo
 							// set the task output
 							LambdaInstanceData->TargetActor = SensedActor;
 
-							// set the flags
-							LambdaInstanceData->bHasTarget = true;
-							LambdaInstanceData->bHasInvestigateLocation = false;
+						// set the flags
+						LambdaInstanceData->bHasTarget = true;
+						LambdaInstanceData->bHasInvestigateLocation = false;
+						LambdaInstanceData->LastStimulusStrength = 0.0f;
 
-						// no direct line of sight to target
-						} else {
+					// no direct line of sight to target
+					} else {
 
 							// if we already have a target, ignore the partial sense and keep on them
 							if (!IsValid(LambdaInstanceData->TargetActor))
@@ -311,6 +376,7 @@ EStateTreeRunStatus FStateTreeSenseEnemiesTask::EnterState(FStateTreeExecutionCo
 
 									// set the investigate flag
 									LambdaInstanceData->bHasInvestigateLocation = true;
+									LambdaInstanceData->bHasTarget = false;
 								}
 							}
 						}
