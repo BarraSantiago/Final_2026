@@ -51,6 +51,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Shooter|UI")
 	TSubclassOf<UUserWidget> DeathMenuUIClass;
 
+	/** Type of win menu widget to spawn when the player escapes. */
+	UPROPERTY(EditAnywhere, Category="Shooter|UI")
+	TSubclassOf<UUserWidget> WinMenuUIClass;
+
 	/** Level name used by the death menu "Main Menu" action. */
 	UPROPERTY(EditAnywhere, Category="Shooter|UI")
 	FName MainMenuLevelName = FName("MainMenu");
@@ -63,6 +67,7 @@ protected:
 	TObjectPtr<UShooterBulletCounterUI> BulletCounterUI;
 	TObjectPtr<UShooterUI> PlayerUI;
 	TObjectPtr<UUserWidget> DeathMenuUI;
+	TObjectPtr<UUserWidget> WinMenuUI;
 
 protected:
 
@@ -112,6 +117,14 @@ public:
 	/** Hides the death menu and restores gameplay input mode. */
 	UFUNCTION(BlueprintCallable, Category="Shooter|Death Menu")
 	void HideDeathMenu();
+
+	/** Opens the win menu and switches input to UI mode. */
+	UFUNCTION(BlueprintCallable, Category="Shooter|Win Menu")
+	void ShowWinMenu();
+
+	/** Hides the win menu and restores gameplay input mode. */
+	UFUNCTION(BlueprintCallable, Category="Shooter|Win Menu")
+	void HideWinMenu();
 
 	/** Restarts the currently loaded map. */
 	UFUNCTION(BlueprintCallable, Category="Shooter|Death Menu")

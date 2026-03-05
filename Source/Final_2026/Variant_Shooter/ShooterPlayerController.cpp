@@ -103,6 +103,7 @@ void AShooterPlayerController::OnPossess(APawn* InPawn)
 
 	// Ensure gameplay input is restored when re-possessing after a respawn.
 	HideDeathMenu();
+	HideWinMenu();
 
 	// subscribe to the pawn's OnDestroyed delegate
 	InPawn->OnDestroyed.AddDynamic(this, &AShooterPlayerController::OnPawnDestroyed);
@@ -238,6 +239,8 @@ void AShooterPlayerController::ShowDeathMenu()
 		return;
 	}
 
+	HideWinMenu();
+
 	if (!IsValid(DeathMenuUI) && DeathMenuUIClass)
 	{
 		DeathMenuUI = CreateWidget<UUserWidget>(this, DeathMenuUIClass);
@@ -277,9 +280,58 @@ void AShooterPlayerController::HideDeathMenu()
 	SetPause(false);
 }
 
+void AShooterPlayerController::ShowWinMenu()
+{
+	if (!IsLocalPlayerController())
+	{
+		return;
+	}
+
+	HideDeathMenu();
+
+	if (!IsValid(WinMenuUI) && WinMenuUIClass)
+	{
+		WinMenuUI = CreateWidget<UUserWidget>(this, WinMenuUIClass);
+	}
+
+	if (IsValid(WinMenuUI) && !WinMenuUI->IsInViewport())
+	{
+		WinMenuUI->AddToViewport(110);
+	}
+
+	FInputModeUIOnly InputMode;
+	if (IsValid(WinMenuUI))
+	{
+		InputMode.SetWidgetToFocus(WinMenuUI->TakeWidget());
+	}
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+
+	SetInputMode(InputMode);
+	bShowMouseCursor = true;
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+	SetPause(true);
+}
+
+void AShooterPlayerController::HideWinMenu()
+{
+	if (IsValid(WinMenuUI))
+	{
+		WinMenuUI->RemoveFromParent();
+	}
+
+	FInputModeGameOnly InputMode;
+	SetInputMode(InputMode);
+	bShowMouseCursor = false;
+	SetIgnoreMoveInput(false);
+	SetIgnoreLookInput(false);
+	SetPause(false);
+}
+
 void AShooterPlayerController::RestartCurrentLevel()
 {
 	HideDeathMenu();
+	HideWinMenu();
 
 	const FString CurrentLevelName = UGameplayStatics::GetCurrentLevelName(this, true);
 	if (!CurrentLevelName.IsEmpty())
@@ -291,6 +343,7 @@ void AShooterPlayerController::RestartCurrentLevel()
 void AShooterPlayerController::ReturnToMainMenu()
 {
 	HideDeathMenu();
+	HideWinMenu();
 
 	if (MainMenuLevelName.IsNone())
 	{
@@ -304,5 +357,6 @@ void AShooterPlayerController::ReturnToMainMenu()
 void AShooterPlayerController::QuitToDesktop()
 {
 	HideDeathMenu();
+	HideWinMenu();
 	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
 }
