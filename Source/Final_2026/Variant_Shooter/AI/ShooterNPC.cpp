@@ -27,10 +27,19 @@ void AShooterNPC::BeginPlay()
 	CurrentHP = ArchetypeStats.MaxHealth;
 	GetCharacterMovement()->MaxWalkSpeed = ArchetypeStats.MoveSpeed;
 
-	// Force a controller on authority so StateTree/AI logic starts reliably.
-	if (HasAuthority() && !Controller)
+	// Avoid immediate forced controller spawn here; auto-possess may still be in progress.
+	// If no controller exists by next tick, then create one as fallback.
+	if (HasAuthority())
 	{
-		SpawnDefaultController();
+		GetWorld()->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			if (!IsValid(Controller))
+			{
+				UE_LOG(LogFinal_2026, Warning, TEXT("ShooterNPC %s had no controller on next tick. Spawning default."),
+				       *GetName());
+				SpawnDefaultController();
+			}
+		}));
 	}
 
 	// spawn the weapon
@@ -42,6 +51,20 @@ void AShooterNPC::BeginPlay()
 		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
 		Weapon = GetWorld()->SpawnActor<AShooterWeapon>(WeaponClass, GetActorTransform(), SpawnParams);
+
+		if (IsValid(Weapon))
+		{
+			Weapon->ActivateWeapon();
+		}
+		else
+		{
+			UE_LOG(LogFinal_2026, Warning, TEXT("ShooterNPC %s failed to spawn weapon from class %s"), *GetName(),
+			       *GetNameSafe(WeaponClass));
+		}
+	}
+	else
+	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("ShooterNPC %s has no WeaponClass assigned"), *GetName());
 	}
 
 	UE_LOG(LogFinal_2026, Log, TEXT("ShooterNPC BeginPlay - Controller valid: %s"), IsValid(GetController()) ? TEXT("true") : TEXT("false"));
@@ -234,10 +257,18 @@ void AShooterNPC::StartShooting(AActor* ActorToShoot)
 	// raise the flag
 	bIsShooting = true;
 
+	UE_LOG(LogFinal_2026, Log, TEXT("ShooterNPC %s StartShooting target=%s weapon=%s"), *GetName(),
+	       IsValid(ActorToShoot) ? *ActorToShoot->GetName() : TEXT("None"),
+	       IsValid(Weapon) ? *Weapon->GetName() : TEXT("None"));
+
 	// signal the weapon
 	if (IsValid(Weapon))
 	{
 		Weapon->StartFiring();
+	}
+	else
+	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("ShooterNPC %s cannot shoot because Weapon is invalid"), *GetName());
 	}
 }
 
@@ -245,6 +276,8 @@ void AShooterNPC::StopShooting()
 {
 	// lower the flag
 	bIsShooting = false;
+
+	UE_LOG(LogFinal_2026, Log, TEXT("ShooterNPC %s StopShooting"), *GetName());
 
 	// signal the weapon
 	if (IsValid(Weapon))

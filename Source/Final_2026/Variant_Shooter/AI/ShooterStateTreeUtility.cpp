@@ -6,6 +6,7 @@
 #include "ShooterNPC.h"
 #include "Camera/CameraComponent.h"
 #include "AIController.h"
+#include "Final_2026.h"
 #include "Perception/AIPerceptionComponent.h"
 #include "ShooterAIController.h"
 #include "StateTreeAsyncExecutionContext.h"
@@ -92,30 +93,38 @@ bool FStateTreeLineOfSightToTargetCondition::TestCondition(FStateTreeExecutionCo
 {
 	const FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 
-	// ensure required data is valid
-	if (!IsValid(InstanceData.Character) || !IsValid(InstanceData.Target))
+	// ensure character data is valid
+	if (!IsValid(InstanceData.Character))
 	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("LoS condition invalid data. Character=None MustHaveLoS=%s"),
+		       InstanceData.bMustHaveLineOfSight ? TEXT("true") : TEXT("false"));
 		return !InstanceData.bMustHaveLineOfSight;
 	}
-	
-	// check if the character is facing towards the target
-	const FVector TargetDir = (InstanceData.Target->GetActorLocation() - InstanceData.Character->GetActorLocation()).GetSafeNormal();
 
-	const float FacingDot = FVector::DotProduct(TargetDir, InstanceData.Character->GetActorForwardVector());
-	const float MaxDot = FMath::Cos(FMath::DegreesToRadians(InstanceData.LineOfSightConeAngle));
-
-	// is the facing outside of our cone half angle?
-	if (FacingDot <= MaxDot)
+	AActor* ResolvedTarget = InstanceData.Target;
+	if (!IsValid(ResolvedTarget))
 	{
+		if (const AShooterAIController* ShooterController = Cast<AShooterAIController>(
+			InstanceData.Character->GetController()))
+		{
+			ResolvedTarget = ShooterController->GetCurrentTarget();
+		}
+	}
+
+	if (!IsValid(ResolvedTarget))
+	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("LoS condition has no target. Character=%s MustHaveLoS=%s"),
+		       *InstanceData.Character->GetName(),
+		       InstanceData.bMustHaveLineOfSight ? TEXT("true") : TEXT("false"));
 		return !InstanceData.bMustHaveLineOfSight;
 	}
 
 	// get the target's bounding box
 	FVector CenterOfMass, Extent;
-	InstanceData.Target->GetActorBounds(true, CenterOfMass, Extent, false);
+	ResolvedTarget->GetActorBounds(true, CenterOfMass, Extent, false);
 
-	// divide the vertical extent by the number of line of sight checks we'll do
-	const float ExtentZOffset = Extent.Z * 2.0f / InstanceData.NumberOfVerticalLineOfSightChecks;
+	// Ensure at least one check; zero or one check should still test center mass.
+	const int32 NumChecks = FMath::Max(1, InstanceData.NumberOfVerticalLineOfSightChecks);
 
 	// get the character's camera location as the source for the line checks
 	const FVector Start = InstanceData.Character->GetFirstPersonCameraComponent()->GetComponentLocation();
@@ -123,15 +132,21 @@ bool FStateTreeLineOfSightToTargetCondition::TestCondition(FStateTreeExecutionCo
 	// ignore the character and target. We want to ensure there's an unobstructed trace not counting them
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(InstanceData.Character);
-	QueryParams.AddIgnoredActor(InstanceData.Target);
+	QueryParams.AddIgnoredActor(ResolvedTarget);
 
 	FHitResult OutHit;
+	AActor* LastBlockingActor = nullptr;
 
 	// run a number of vertically offset line traces to the target location
-	for (int32 i = 0; i < InstanceData.NumberOfVerticalLineOfSightChecks - 1; ++i)
+	for (int32 i = 0; i < NumChecks; ++i)
 	{
-		// calculate the endpoint for the trace
-		const FVector End = CenterOfMass + FVector(0.0f, 0.0f, Extent.Z - ExtentZOffset * i);
+		FVector End = CenterOfMass;
+		if (NumChecks > 1)
+		{
+			// Sweep vertically from top to bottom of target bounds.
+			const float T = static_cast<float>(i) / static_cast<float>(NumChecks - 1);
+			End.Z = (CenterOfMass.Z + Extent.Z) - (2.0f * Extent.Z * T);
+		}
 
 		InstanceData.Character->GetWorld()->LineTraceSingleByChannel(OutHit, Start, End, ECC_Visibility, QueryParams);
 
@@ -141,6 +156,18 @@ bool FStateTreeLineOfSightToTargetCondition::TestCondition(FStateTreeExecutionCo
 			// we only need one unobstructed trace, so terminate early
 			return InstanceData.bMustHaveLineOfSight;
 		}
+
+		LastBlockingActor = OutHit.GetActor();
+	}
+
+	static double LastNoLoSLogTime = -10.0;
+	const double CurrentTime = InstanceData.Character->GetWorld()->GetTimeSeconds();
+	if ((CurrentTime - LastNoLoSLogTime) > 1.0)
+	{
+		LastNoLoSLogTime = CurrentTime;
+		UE_LOG(LogFinal_2026, Log, TEXT("LoS condition failed. Character=%s Target=%s BlockingActor=%s Checks=%d"),
+		       *InstanceData.Character->GetName(), *ResolvedTarget->GetName(), *GetNameSafe(LastBlockingActor),
+		       NumChecks);
 	}
 
 	// no line of sight found
@@ -261,15 +288,38 @@ EStateTreeRunStatus FStateTreeShootAtTargetTask::EnterState(FStateTreeExecutionC
 	{
 		// get the instance data
 		FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-		AShooterNPC* ShooterCharacter = ResolveShooterCharacter(InstanceData.Character.Get());
+		AShooterNPC* ShooterCharacter = ResolveShooterCharacter(
+			InstanceData.Character.Get(),
+			InstanceData.Controller.Get());
+		AActor* ResolvedTarget = InstanceData.Target.Get();
 
-		if (!IsValid(ShooterCharacter) || !IsValid(InstanceData.Target))
+		if (!IsValid(ResolvedTarget) && IsValid(InstanceData.Controller.Get()))
 		{
+			ResolvedTarget = InstanceData.Controller->GetCurrentTarget();
+			if (IsValid(ResolvedTarget))
+			{
+				UE_LOG(LogFinal_2026, Warning,
+				       TEXT("ShootAtTarget task target binding missing; using controller target %s"),
+				       *ResolvedTarget->GetName());
+				InstanceData.Target = ResolvedTarget;
+			}
+		}
+
+		if (!IsValid(ShooterCharacter) || !IsValid(ResolvedTarget))
+		{
+			UE_LOG(LogFinal_2026, Warning,
+			       TEXT("ShootAtTarget task failed. Character=%s Controller=%s Target=%s"),
+			       IsValid(InstanceData.Character.Get()) ? *InstanceData.Character->GetName() : TEXT("None"),
+			       IsValid(InstanceData.Controller.Get()) ? *InstanceData.Controller->GetName() : TEXT("None"),
+			       IsValid(ResolvedTarget) ? *ResolvedTarget->GetName() : TEXT("None"));
 			return EStateTreeRunStatus::Failed;
 		}
 
+		UE_LOG(LogFinal_2026, Log, TEXT("ShootAtTarget task started. Shooter=%s Target=%s"),
+		       *ShooterCharacter->GetName(), *ResolvedTarget->GetName());
+
 		// tell the character to shoot the target
-		ShooterCharacter->StartShooting(InstanceData.Target);
+		ShooterCharacter->StartShooting(ResolvedTarget);
 	}
 
 	return EStateTreeRunStatus::Running;
@@ -282,11 +332,14 @@ void FStateTreeShootAtTargetTask::ExitState(FStateTreeExecutionContext& Context,
 	{
 		// get the instance data
 		FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-		AShooterNPC* ShooterCharacter = ResolveShooterCharacter(InstanceData.Character.Get());
+		AShooterNPC* ShooterCharacter = ResolveShooterCharacter(
+			InstanceData.Character.Get(),
+			InstanceData.Controller.Get());
 
 		// tell the character to stop shooting
 		if (IsValid(ShooterCharacter))
 		{
+			UE_LOG(LogFinal_2026, Log, TEXT("ShootAtTarget task stopped. Shooter=%s"), *ShooterCharacter->GetName());
 			ShooterCharacter->StopShooting();
 		}
 	}
@@ -310,8 +363,16 @@ EStateTreeRunStatus FStateTreeSenseEnemiesTask::EnterState(FStateTreeExecutionCo
 
 		if (!IsValid(InstanceData.Controller) || !IsValid(ShooterCharacter))
 		{
+			UE_LOG(LogFinal_2026, Warning,
+			       TEXT("SenseEnemies task failed to enter. Controller=%s Character=%s ResolvedShooter=%s"),
+			       IsValid(InstanceData.Controller.Get()) ? *InstanceData.Controller->GetName() : TEXT("None"),
+			       IsValid(InstanceData.Character.Get()) ? *InstanceData.Character->GetName() : TEXT("None"),
+			       IsValid(ShooterCharacter) ? *ShooterCharacter->GetName() : TEXT("None"));
 			return EStateTreeRunStatus::Failed;
 		}
+
+		UE_LOG(LogFinal_2026, Log, TEXT("SenseEnemies task entered. Controller=%s Shooter=%s"),
+		       *InstanceData.Controller->GetName(), *ShooterCharacter->GetName());
 
 		// bind the perception updated delegate on the controller
 		InstanceData.Controller->OnShooterPerceptionUpdated.BindLambda(
@@ -359,6 +420,14 @@ EStateTreeRunStatus FStateTreeSenseEnemiesTask::EnterState(FStateTreeExecutionCo
 						LambdaInstanceData->bHasInvestigateLocation = false;
 						LambdaInstanceData->LastStimulusStrength = 0.0f;
 
+						UE_LOG(LogFinal_2026, Log,
+						       TEXT("SenseEnemies acquired target. Controller=%s Shooter=%s Target=%s Sensed=%s Strength=%.2f"),
+						       *LambdaInstanceData->Controller->GetName(),
+						       *LambdaShooterCharacter->GetName(),
+						       *SensedActor->GetName(),
+						       Stimulus.WasSuccessfullySensed() ? TEXT("true") : TEXT("false"),
+						       Stimulus.Strength);
+
 					// no direct line of sight to target
 					} else {
 
@@ -377,6 +446,14 @@ EStateTreeRunStatus FStateTreeSenseEnemiesTask::EnterState(FStateTreeExecutionCo
 									// set the investigate flag
 									LambdaInstanceData->bHasInvestigateLocation = true;
 									LambdaInstanceData->bHasTarget = false;
+
+									UE_LOG(LogFinal_2026, Log,
+									       TEXT("SenseEnemies investigate set. Controller=%s Shooter=%s StimulusActor=%s Location=%s Strength=%.2f"),
+									       *LambdaInstanceData->Controller->GetName(),
+									       *LambdaShooterCharacter->GetName(),
+									       *SensedActor->GetName(),
+									       *Stimulus.StimulusLocation.ToString(),
+									       Stimulus.Strength);
 								}
 							}
 						}
@@ -420,6 +497,9 @@ EStateTreeRunStatus FStateTreeSenseEnemiesTask::EnterState(FStateTreeExecutionCo
 
 				if (bForget)
 				{
+					UE_LOG(LogFinal_2026, Log, TEXT("SenseEnemies forgetting target. Controller=%s Actor=%s"),
+					       *LambdaInstanceData->Controller->GetName(), *SensedActor->GetName());
+
 					// clear the target
 					LambdaInstanceData->TargetActor = nullptr;
 
@@ -437,6 +517,9 @@ EStateTreeRunStatus FStateTreeSenseEnemiesTask::EnterState(FStateTreeExecutionCo
 
 			}
 		);
+
+		UE_LOG(LogFinal_2026, Log, TEXT("SenseEnemies delegates bound. Controller=%s"),
+		       *InstanceData.Controller->GetName());
 	}
 
 	return EStateTreeRunStatus::Running;

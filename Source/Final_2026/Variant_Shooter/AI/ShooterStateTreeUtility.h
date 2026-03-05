@@ -204,6 +204,10 @@ struct FStateTreeShootAtTargetInstanceData
 {
 	GENERATED_BODY()
 
+	/** AI controller context, used as fallback to resolve the shooting pawn. */
+	UPROPERTY(EditAnywhere, Category = Context)
+	TObjectPtr<AShooterAIController> Controller;
+
 	/** Actor from StateTree context expected to be a ShooterNPC */
 	UPROPERTY(EditAnywhere, Category = Context)
 	TObjectPtr<AActor> Character;

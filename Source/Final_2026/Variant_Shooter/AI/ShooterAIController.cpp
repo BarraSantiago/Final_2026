@@ -8,6 +8,7 @@
 #include "Perception/AIPerceptionComponent.h"
 #include "Navigation/PathFollowingComponent.h"
 #include "AI/Navigation/PathFollowingAgentInterface.h"
+#include "GameFramework/Pawn.h"
 
 
 AShooterAIController::AShooterAIController()
@@ -75,12 +76,64 @@ void AShooterAIController::ClearCurrentTarget()
 
 void AShooterAIController::OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 {
+	UE_LOG(LogFinal_2026, Log,
+	       TEXT("AI PerceptionUpdated Controller=%s Actor=%s Sensed=%s Strength=%.2f Tag=%s DelegateBound=%s"),
+	       *GetName(),
+	       *GetNameSafe(Actor),
+	       Stimulus.WasSuccessfullySensed() ? TEXT("true") : TEXT("false"),
+	       Stimulus.Strength,
+	       *Stimulus.Tag.ToString(),
+	       OnShooterPerceptionUpdated.IsBound() ? TEXT("true") : TEXT("false"));
+
 	// pass the data to the StateTree delegate hook
 	OnShooterPerceptionUpdated.ExecuteIfBound(Actor, Stimulus);
+
+	// Fallback: directly drive shooting from perception when StateTree target bindings are misconfigured.
+	AShooterNPC* ShooterNPC = Cast<AShooterNPC>(GetPawn());
+	APawn* SensedPawn = Cast<APawn>(Actor);
+	const bool bIsPlayerTarget = IsValid(SensedPawn) ? SensedPawn->IsPlayerControlled() : (IsValid(Actor) && Actor->ActorHasTag(FName("Player")));
+
+	if (!IsValid(ShooterNPC) || !bIsPlayerTarget || !IsValid(Actor))
+	{
+		return;
+	}
+
+	if (Stimulus.WasSuccessfullySensed())
+	{
+		SetCurrentTarget(Actor);
+		ShooterNPC->StartShooting(Actor);
+		UE_LOG(LogFinal_2026, Log, TEXT("DirectShootFallback start. Controller=%s Shooter=%s Target=%s"),
+		       *GetName(), *ShooterNPC->GetName(), *Actor->GetName());
+	}
+	else if (GetCurrentTarget() == Actor)
+	{
+		ShooterNPC->StopShooting();
+		ClearCurrentTarget();
+		UE_LOG(LogFinal_2026, Log, TEXT("DirectShootFallback stop. Controller=%s Shooter=%s Target=%s"),
+		       *GetName(), *ShooterNPC->GetName(), *Actor->GetName());
+	}
 }
 
 void AShooterAIController::OnPerceptionForgotten(AActor* Actor)
 {
+	UE_LOG(LogFinal_2026, Log, TEXT("AI PerceptionForgotten Controller=%s Actor=%s DelegateBound=%s"),
+	       *GetName(),
+	       *GetNameSafe(Actor),
+	       OnShooterPerceptionForgotten.IsBound() ? TEXT("true") : TEXT("false"));
+
 	// pass the data to the StateTree delegate hook
 	OnShooterPerceptionForgotten.ExecuteIfBound(Actor);
+
+	// Fallback: ensure shooting stops if the current target is forgotten.
+	if (GetCurrentTarget() == Actor)
+	{
+		if (AShooterNPC* ShooterNPC = Cast<AShooterNPC>(GetPawn()))
+		{
+			ShooterNPC->StopShooting();
+			UE_LOG(LogFinal_2026, Log, TEXT("DirectShootFallback forgot target. Controller=%s Shooter=%s Target=%s"),
+			       *GetName(), *ShooterNPC->GetName(), *GetNameSafe(Actor));
+		}
+
+		ClearCurrentTarget();
+	}
 }

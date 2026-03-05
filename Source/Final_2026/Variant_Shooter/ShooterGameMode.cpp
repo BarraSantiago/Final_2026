@@ -283,6 +283,11 @@ void AShooterGameMode::EndRun(const FName& EndingId, const FText& EndingText, bo
 	{
 		ShooterPC->SetObjectiveText(FText::FromString(TEXT("Run finished.")));
 		ShooterPC->ShowEnding(EndingId, EndingText, bWon);
+
+		if (bWon)
+		{
+			ShooterPC->ShowWinMenu();
+		}
 	}
 }
 
@@ -480,26 +485,10 @@ void AShooterGameMode::SpawnOneWaveEnemy()
 
 	if (AShooterNPC* SpawnedEnemy = GetWorld()->SpawnActor<AShooterNPC>(WaveEnemyClass, SpawnTransform, SpawnParams))
 	{
-		if (WaveEnemyControllerClass)
-		{
-			FActorSpawnParameters ControllerSpawnParams;
-			ControllerSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-			if (AController* NewController = GetWorld()->SpawnActor<AController>(
-				WaveEnemyControllerClass,
-				SpawnedEnemy->GetActorLocation(),
-				SpawnedEnemy->GetActorRotation(),
-				ControllerSpawnParams))
-			{
-				NewController->Possess(SpawnedEnemy);
-			}
-		}
-		else
-		{
-			// Only fallback if no explicit class was captured
-			SpawnedEnemy->SpawnDefaultController();
-		}
-
+		UE_LOG(LogFinal_2026, Log, TEXT("Wave enemy spawned: %s Controller=%s AIControllerClass=%s"),
+		       *SpawnedEnemy->GetName(),
+		       *GetNameSafe(SpawnedEnemy->GetController()),
+		       *GetNameSafe(SpawnedEnemy->AIControllerClass));
 		++AliveEnemyCount;
 	}
 

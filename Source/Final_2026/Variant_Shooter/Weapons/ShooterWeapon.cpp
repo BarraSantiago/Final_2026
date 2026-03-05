@@ -4,6 +4,7 @@
 #include "ShooterWeapon.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Engine/World.h"
+#include "Final_2026.h"
 #include "ShooterProjectile.h"
 #include "ShooterWeaponHolder.h"
 #include "Components/SceneComponent.h"
@@ -113,8 +114,10 @@ void AShooterWeapon::DeactivateWeapon()
 
 void AShooterWeapon::StartFiring()
 {
+	UE_LOG(LogFinal_2026, Log, TEXT("ShooterWeapon %s StartFiring"), *GetName());
 	if (!WeaponOwner)
 	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("ShooterWeapon::StartFiring failed: WeaponOwner is null for %s"), *GetName());
 		return;
 	}
 
@@ -128,23 +131,28 @@ void AShooterWeapon::StartFiring()
 	}
 
 	// check how much time has passed since we last shot
-	// this may be under the refire rate if the weapon shoots slow enough and the player is spamming the trigger
+	// this may be under the refire rate if the weapon shoots slow enough and the trigger is held/spammed
 	const float TimeSinceLastShot = GetWorld()->GetTimeSeconds() - TimeOfLastShot;
+	const bool bCanShootImmediately = (TimeOfLastShot <= 0.0f) || (TimeSinceLastShot >= RefireRate);
 
-	if (TimeSinceLastShot > RefireRate)
+	if (bCanShootImmediately)
 	{
 		// fire the weapon right away
 		Fire();
+		return;
+	}
 
-	} else {
+	const float TimeToNextShot = FMath::Max(0.0f, RefireRate - TimeSinceLastShot);
 
-		// if we're full auto, schedule the next shot
-		if (bFullAuto)
-		{
-			const float TimeToNextShot = FMath::Max(0.0f, RefireRate - TimeSinceLastShot);
-			GetWorld()->GetTimerManager().SetTimer(RefireTimer, this, &AShooterWeapon::Fire, TimeToNextShot, false);
-		}
-
+	// full-auto retries by calling Fire directly; semi-auto notifies owner so AI holders can request another shot.
+	if (bFullAuto)
+	{
+		GetWorld()->GetTimerManager().SetTimer(RefireTimer, this, &AShooterWeapon::Fire, TimeToNextShot, false);
+	}
+	else
+	{
+		GetWorld()->GetTimerManager().SetTimer(RefireTimer, this, &AShooterWeapon::FireCooldownExpired, TimeToNextShot,
+		                                       false);
 	}
 }
 
@@ -172,6 +180,7 @@ void AShooterWeapon::Fire()
 
 	if (!ProjectileClass)
 	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("ShooterWeapon::Fire aborted: ProjectileClass is null for %s"), *GetName());
 		return;
 	}
 	
