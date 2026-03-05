@@ -2,6 +2,7 @@
 
 
 #include "Interaction/ShooterObjectiveKey.h"
+#include "Final_2026.h"
 #include "Components/SceneComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -51,18 +52,24 @@ void AShooterObjectiveKey::Interact(APawn* InteractingPawn)
 {
 	if (!CanInteract(InteractingPawn))
 	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("ObjectiveKey %s interaction rejected"), *GetName());
 		return;
 	}
 
 	bCollected = true;
 	SetActorEnableCollision(false);
 	SetActorHiddenInGame(true);
+	UE_LOG(LogFinal_2026, Log, TEXT("ObjectiveKey %s collected by %s"), *GetName(), *GetNameSafe(InteractingPawn));
 
 	if (AShooterGameMode* GameMode = GetWorld()->GetAuthGameMode<AShooterGameMode>())
 	{
 		GameMode->NotifyObjectiveKeyCollected();
 	}
+	else
+	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("ObjectiveKey %s could not notify collection: AShooterGameMode missing"),
+		       *GetName());
+	}
 
 	BP_OnCollected(InteractingPawn);
 }
-

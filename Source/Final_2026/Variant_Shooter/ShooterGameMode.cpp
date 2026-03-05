@@ -2,6 +2,7 @@
 
 
 #include "Variant_Shooter/ShooterGameMode.h"
+#include "Final_2026.h"
 #include "AI/ShooterNPC.h"
 #include "ShooterUI.h"
 #include "ShooterPlayerController.h"
@@ -15,6 +16,10 @@
 void AShooterGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+
+	UE_LOG(LogFinal_2026, Log, TEXT("ShooterGameMode BeginPlay. UnlockMode=%s RequiredKeyCount=%d"),
+	       DoorUnlockMode == EShooterDoorUnlockMode::KeyPickup ? TEXT("KeyPickup") : TEXT("SurvivalTimer"),
+	       RequiredKeyCount);
 
 	// create the UI
 	APlayerController* PlayerController = UGameplayStatics::GetPlayerController(GetWorld(), 0);
@@ -75,6 +80,10 @@ void AShooterGameMode::RegisterObjectiveDoor(AShooterObjectiveDoor* InDoor)
 {
 	ObjectiveDoor = InDoor;
 
+	UE_LOG(LogFinal_2026, Log, TEXT("Objective door registered: %s (AlreadyUnlocked=%s)"),
+	       IsValid(ObjectiveDoor) ? *ObjectiveDoor->GetName() : TEXT("None"),
+	       bDoorUnlocked ? TEXT("true") : TEXT("false"));
+
 	if (IsValid(ObjectiveDoor))
 	{
 		ObjectiveDoor->SetDoorUnlocked(bDoorUnlocked);
@@ -85,10 +94,15 @@ void AShooterGameMode::NotifyObjectiveKeyCollected()
 {
 	if (bQuestEnded || DoorUnlockMode != EShooterDoorUnlockMode::KeyPickup)
 	{
+		UE_LOG(LogFinal_2026, Warning,
+		       TEXT("NotifyObjectiveKeyCollected ignored. QuestEnded=%s UnlockMode=%s"),
+		       bQuestEnded ? TEXT("true") : TEXT("false"),
+		       DoorUnlockMode == EShooterDoorUnlockMode::KeyPickup ? TEXT("KeyPickup") : TEXT("SurvivalTimer"));
 		return;
 	}
 
 	++CurrentKeyCount;
+	UE_LOG(LogFinal_2026, Log, TEXT("Objective key collected: %d/%d"), CurrentKeyCount, RequiredKeyCount);
 
 	if (CurrentKeyCount >= RequiredKeyCount)
 	{
@@ -146,12 +160,19 @@ void AShooterGameMode::NotifyPlayerDied()
 	}
 }
 
-void AShooterGameMode::RequestEscape(AShooterCharacter* EscapingCharacter)
+void AShooterGameMode::RequestEscape(APawn* EscapingPawn)
 {
-	if (bQuestEnded || !bDoorUnlocked) //|| !IsValid(EscapingCharacter))
+	if (bQuestEnded || !bDoorUnlocked)
 	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("RequestEscape denied. QuestEnded=%s DoorUnlocked=%s Pawn=%s"),
+		       bQuestEnded ? TEXT("true") : TEXT("false"),
+		       bDoorUnlocked ? TEXT("true") : TEXT("false"),
+		       *GetNameSafe(EscapingPawn));
 		return;
 	}
+
+	UE_LOG(LogFinal_2026, Log, TEXT("RequestEscape accepted. Pawn=%s Kills=%d"),
+	       *GetNameSafe(EscapingPawn), PlayerKillCount);
 
 	const FName EndingId = ResolveEndingByKillCount();
 	EndRun(EndingId, BuildEndingDescription(EndingId), true);
@@ -219,10 +240,15 @@ void AShooterGameMode::UnlockDoor()
 {
 	if (bDoorUnlocked || bQuestEnded)
 	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("UnlockDoor ignored. DoorUnlocked=%s QuestEnded=%s"),
+		       bDoorUnlocked ? TEXT("true") : TEXT("false"),
+		       bQuestEnded ? TEXT("true") : TEXT("false"));
 		return;
 	}
 
 	bDoorUnlocked = true;
+	UE_LOG(LogFinal_2026, Log, TEXT("Objective door unlocked. RegisteredDoor=%s"),
+	       IsValid(ObjectiveDoor) ? *ObjectiveDoor->GetName() : TEXT("None"));
 	if (IsValid(ObjectiveDoor))
 	{
 		ObjectiveDoor->SetDoorUnlocked(true);
@@ -241,9 +267,12 @@ void AShooterGameMode::EndRun(const FName& EndingId, const FText& EndingText, bo
 {
 	if (bQuestEnded)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("B quest unfinished."));
+		UE_LOG(LogFinal_2026, Warning, TEXT("EndRun ignored because quest already ended."));
 		return;
 	}
+
+	UE_LOG(LogFinal_2026, Log, TEXT("EndRun called. Ending=%s Won=%s Kills=%d"), *EndingId.ToString(),
+	       bWon ? TEXT("true") : TEXT("false"), PlayerKillCount);
 
 	bQuestEnded = true;
 	GetWorld()->GetTimerManager().ClearTimer(SurvivalTimerHandle);

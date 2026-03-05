@@ -9,7 +9,6 @@
 
 class UStaticMeshComponent;
 class UBoxComponent;
-class AShooterCharacter;
 
 /**
  *  Final objective door used to escape and finish the run.
@@ -79,4 +78,3 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Door", meta = (DisplayName = "OnEscapeInteract"))
 	void BP_OnEscapeInteract(APawn* InteractingPawn);
 };
-

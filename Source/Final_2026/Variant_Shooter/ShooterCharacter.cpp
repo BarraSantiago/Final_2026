@@ -2,6 +2,7 @@
 
 
 #include "ShooterCharacter.h"
+#include "Final_2026.h"
 #include "ShooterWeapon.h"
 #include "Interaction/ShooterInteractable.h"
 #include "EnhancedInputComponent.h"
@@ -177,18 +178,27 @@ void AShooterCharacter::DoInteract()
 {
 	if (!IsValid(FocusedInteractableActor))
 	{
+		UE_LOG(LogFinal_2026, Verbose, TEXT("DoInteract: no focused interactable"));
 		return;
 	}
 
 	IShooterInteractable* Interactable = Cast<IShooterInteractable>(FocusedInteractableActor.Get());
 	if (!Interactable)
 	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("DoInteract: focused actor %s does not implement IShooterInteractable"),
+		       *FocusedInteractableActor->GetName());
 		return;
 	}
 
 	if (Interactable->CanInteract(this))
 	{
+		UE_LOG(LogFinal_2026, Log, TEXT("DoInteract: interacting with %s"), *FocusedInteractableActor->GetName());
 		Interactable->Interact(this);
+	}
+	else
+	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("DoInteract: %s returned CanInteract=false"),
+		       *FocusedInteractableActor->GetName());
 	}
 
 	// interaction may alter state, so refresh prompt immediately.

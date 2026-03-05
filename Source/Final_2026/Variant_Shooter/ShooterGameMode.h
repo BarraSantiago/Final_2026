@@ -8,10 +8,10 @@
 
 class UShooterUI;
 class AShooterObjectiveDoor;
-class AShooterCharacter;
 class AShooterNPC;
 class AController;
 class AActor;
+class APawn;
 
 UENUM(BlueprintType)
 enum class EShooterDoorUnlockMode : uint8
@@ -181,7 +181,7 @@ public:
 	void NotifyPlayerDied();
 
 	/** Called by the objective door when the player interacts with it. */
-	void RequestEscape(AShooterCharacter* EscapingCharacter);
+	void RequestEscape(APawn* EscapingPawn);
 
 	/** Returns true if door can currently be used to escape. */
 	bool IsDoorUnlocked() const { return bDoorUnlocked; }

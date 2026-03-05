@@ -2,11 +2,11 @@
 
 
 #include "Interaction/ShooterObjectiveDoor.h"
+#include "Final_2026.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
 #include "ShooterGameMode.h"
-#include "ShooterCharacter.h"
 
 AShooterObjectiveDoor::AShooterObjectiveDoor()
 {
@@ -36,6 +36,11 @@ void AShooterObjectiveDoor::BeginPlay()
 	{
 		GameMode->RegisterObjectiveDoor(this);
 	}
+	else
+	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("ObjectiveDoor %s could not find AShooterGameMode in BeginPlay"),
+		       *GetName());
+	}
 }
 
 void AShooterObjectiveDoor::SetDoorUnlocked(bool bInUnlocked)
@@ -45,6 +50,7 @@ void AShooterObjectiveDoor::SetDoorUnlocked(bool bInUnlocked)
 
 	if (bWasLocked)
 	{
+		UE_LOG(LogFinal_2026, Log, TEXT("ObjectiveDoor %s unlocked"), *GetName());
 		BP_OnDoorUnlocked();
 	}
 }
@@ -68,6 +74,7 @@ void AShooterObjectiveDoor::Interact(APawn* InteractingPawn)
 {
 	if (!CanInteract(InteractingPawn))
 	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("ObjectiveDoor %s interaction rejected: invalid pawn"), *GetName());
 		return;
 	}
 
@@ -75,16 +82,19 @@ void AShooterObjectiveDoor::Interact(APawn* InteractingPawn)
 	{
 		if (AShooterGameMode* GameMode = GetWorld()->GetAuthGameMode<AShooterGameMode>())
 		{
-			if (AShooterCharacter* ShooterCharacter = Cast<AShooterCharacter>(InteractingPawn))
-			{
-				GameMode->RequestEscape(ShooterCharacter);
-			}
+			GameMode->RequestEscape(InteractingPawn);
+		}
+		else
+		{
+			UE_LOG(LogFinal_2026, Warning, TEXT("ObjectiveDoor %s cannot request escape: AShooterGameMode missing"),
+			       *GetName());
 		}
 
 		BP_OnEscapeInteract(InteractingPawn);
 		return;
 	}
 
+	UE_LOG(LogFinal_2026, Log, TEXT("ObjectiveDoor %s interacted while locked by %s"),
+	       *GetName(), *GetNameSafe(InteractingPawn));
 	BP_OnLockedInteract(InteractingPawn);
 }
-
