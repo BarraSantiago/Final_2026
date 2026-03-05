@@ -217,6 +217,11 @@ void AShooterWeapon::FireCooldownExpired()
 
 void AShooterWeapon::StartReload()
 {
+	if (bInfiniteAmmo)
+	{
+		return;
+	}
+
 	if (bIsReloading)
 	{
 		return;
@@ -233,6 +238,12 @@ void AShooterWeapon::StartReload()
 
 void AShooterWeapon::CompleteReload()
 {
+	if (bInfiniteAmmo)
+	{
+		bIsReloading = false;
+		return;
+	}
+
 	bIsReloading = false;
 
 	if (CurrentBullets >= MagazineSize || ReserveAmmo <= 0)
@@ -266,7 +277,10 @@ void AShooterWeapon::FireProjectile(const FVector& TargetLocation)
 	}
 
 	// consume one bullet up-front, then spawn the projectile.
-	--CurrentBullets;
+	if (!bInfiniteAmmo)
+	{
+		--CurrentBullets;
+	}
 
 	// get the projectile transform
 	FTransform ProjectileTransform = CalculateProjectileSpawnTransform(TargetLocation);
@@ -296,7 +310,7 @@ void AShooterWeapon::FireProjectile(const FVector& TargetLocation)
 	// update the weapon HUD
 	WeaponOwner->UpdateWeaponHUD(CurrentBullets, MagazineSize);
 
-	if (CurrentBullets <= 0)
+	if (!bInfiniteAmmo && CurrentBullets <= 0)
 	{
 		StartReload();
 	}
@@ -332,9 +346,31 @@ void AShooterWeapon::RequestReload()
 	StartReload();
 }
 
+void AShooterWeapon::SetInfiniteAmmoEnabled(bool bEnabled)
+{
+	bInfiniteAmmo = bEnabled;
+
+	if (bInfiniteAmmo)
+	{
+		bIsReloading = false;
+		if (GetWorld())
+		{
+			GetWorld()->GetTimerManager().ClearTimer(ReloadTimer);
+		}
+
+		CurrentBullets = MagazineSize;
+		ReserveAmmo = FMath::Max(0, AmmoCapacity - CurrentBullets);
+	}
+
+	if (WeaponOwner)
+	{
+		WeaponOwner->UpdateWeaponHUD(CurrentBullets, MagazineSize);
+	}
+}
+
 bool AShooterWeapon::CanFireNow() const
 {
-	return !bIsReloading && CurrentBullets > 0;
+	return !bIsReloading && (bInfiniteAmmo || CurrentBullets > 0);
 }
 
 int32 AShooterWeapon::AddAmmo(int32 AmmoToAdd)

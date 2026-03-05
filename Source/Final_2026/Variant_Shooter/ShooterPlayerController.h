@@ -72,6 +72,7 @@ protected:
 	TObjectPtr<UShooterUI> PlayerUI;
 	TObjectPtr<UUserWidget> DeathMenuUI;
 	TObjectPtr<UUserWidget> WinMenuUI;
+	bool bGodModeEnabled = false;
 
 protected:
 
@@ -100,6 +101,9 @@ protected:
 	UFUNCTION()
 	void OnInteractionPromptUpdated(bool bVisible, FText ObjectName, FText HintText);
 
+	/** Applies current god-mode state to the possessed shooter pawn if available. */
+	void ApplyGodModeToCurrentPawn();
+
 public:
 
 	/** Push objective text to HUD widgets. */
@@ -113,6 +117,10 @@ public:
 
 	/** Push ending result to HUD widgets. */
 	void ShowEnding(const FName& EndingId, const FText& EndingText, bool bWon);
+
+	/** Toggles god mode on the current player pawn. */
+	UFUNCTION(BlueprintCallable, Category="Shooter|Cheats")
+	void ToggleGodMode();
 
 	/** Opens the death menu and switches input to UI mode. */
 	UFUNCTION(BlueprintCallable, Category="Shooter|Death Menu")

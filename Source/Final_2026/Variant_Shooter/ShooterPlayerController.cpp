@@ -14,6 +14,7 @@
 #include "Final_2026.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "InputCoreTypes.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 
 namespace
@@ -112,6 +113,11 @@ void AShooterPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
 
+	if (InputComponent)
+	{
+		InputComponent->BindKey(EKeys::F1, IE_Pressed, this, &AShooterPlayerController::ToggleGodMode);
+	}
+
 	// only add IMCs for local player controllers
 	if (IsLocalPlayerController())
 	{
@@ -162,6 +168,8 @@ void AShooterPlayerController::OnPossess(APawn* InPawn)
 		// force update the life bar
 		ShooterCharacter->OnDamaged.Broadcast(1.0f);
 	}
+
+	ApplyGodModeToCurrentPawn();
 }
 
 void AShooterPlayerController::OnPawnDestroyed(AActor* DestroyedActor)
@@ -232,6 +240,20 @@ void AShooterPlayerController::OnInteractionPromptUpdated(bool bVisible, FText O
 	{
 		PlayerUI->BP_SetInteractionPrompt(bVisible, ObjectName, HintText);
 	}
+}
+
+void AShooterPlayerController::ApplyGodModeToCurrentPawn()
+{
+	if (AShooterCharacter* ShooterCharacter = Cast<AShooterCharacter>(GetPawn()))
+	{
+		ShooterCharacter->SetGodModeEnabled(bGodModeEnabled);
+	}
+}
+
+void AShooterPlayerController::ToggleGodMode()
+{
+	bGodModeEnabled = !bGodModeEnabled;
+	ApplyGodModeToCurrentPawn();
 }
 
 void AShooterPlayerController::SetObjectiveText(const FText& ObjectiveText)

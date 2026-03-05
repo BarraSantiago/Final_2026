@@ -71,6 +71,9 @@ protected:
 	/** Current HP remaining to this character */
 	float CurrentHP = 0.0f;
 
+	/** True when this character is invulnerable and has infinite ammo. */
+	bool bGodModeEnabled = false;
+
 	/** Team ID for this character*/
 	UPROPERTY(EditAnywhere, Category="Team")
 	uint8 TeamByte = 0;
@@ -164,6 +167,14 @@ public:
 	/** Returns current health percentage from 0 to 1. */
 	UFUNCTION(BlueprintPure, Category="Health")
 	float GetHealthPercent() const;
+
+	/** Enables or disables god mode for this character. */
+	UFUNCTION(BlueprintCallable, Category="Cheats")
+	void SetGodModeEnabled(bool bEnabled);
+
+	/** Returns whether god mode is currently enabled. */
+	UFUNCTION(BlueprintPure, Category="Cheats")
+	bool IsGodModeEnabled() const { return bGodModeEnabled; }
 
 public:
 

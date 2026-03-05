@@ -113,6 +113,11 @@ void AShooterCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 float AShooterCharacter::TakeDamage(float Damage, struct FDamageEvent const& DamageEvent, AController* EventInstigator,
                                     AActor* DamageCauser)
 {
+	if (bGodModeEnabled)
+	{
+		return 0.0f;
+	}
+
 	// ignore if already dead
 	if (CurrentHP <= 0.0f)
 	{
@@ -276,6 +281,25 @@ float AShooterCharacter::GetHealthPercent() const
 	return MaxHP > 0.0f ? CurrentHP / MaxHP : 0.0f;
 }
 
+void AShooterCharacter::SetGodModeEnabled(bool bEnabled)
+{
+	bGodModeEnabled = bEnabled;
+
+	if (bGodModeEnabled)
+	{
+		CurrentHP = MaxHP;
+		OnDamaged.Broadcast(1.0f);
+	}
+
+	for (AShooterWeapon* OwnedWeapon : OwnedWeapons)
+	{
+		if (IsValid(OwnedWeapon))
+		{
+			OwnedWeapon->SetInfiniteAmmoEnabled(bGodModeEnabled);
+		}
+	}
+}
+
 void AShooterCharacter::AttachWeaponMeshes(AShooterWeapon* Weapon)
 {
 	const FAttachmentTransformRules AttachmentRule(EAttachmentRule::SnapToTarget, false);
@@ -344,6 +368,8 @@ void AShooterCharacter::AddWeaponClass(const TSubclassOf<AShooterWeapon>& Weapon
 
 		if (AddedWeapon)
 		{
+			AddedWeapon->SetInfiniteAmmoEnabled(bGodModeEnabled);
+
 			// add the weapon to the owned list
 			OwnedWeapons.Add(AddedWeapon);
 

@@ -123,6 +123,9 @@ protected:
 	/** True while the weapon is currently reloading. */
 	bool bIsReloading = false;
 
+	/** If true, this weapon does not consume ammo and never needs to reload. */
+	bool bInfiniteAmmo = false;
+
 	/** Cast pawn pointer to the owner for AI perception system interactions */
 	TObjectPtr<APawn> PawnOwner;
 
@@ -202,6 +205,12 @@ public:
 
 	/** Requests a manual reload if this weapon can reload. */
 	void RequestReload();
+
+	/** Enables or disables infinite ammo mode for this weapon. */
+	void SetInfiniteAmmoEnabled(bool bEnabled);
+
+	/** Returns true when infinite ammo mode is enabled. */
+	bool IsInfiniteAmmoEnabled() const { return bInfiniteAmmo; }
 
 	/** Returns the third person mesh */
 	UFUNCTION(BlueprintPure, Category="Weapon")
