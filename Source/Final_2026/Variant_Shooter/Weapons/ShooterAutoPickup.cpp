@@ -1,6 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
-
 #include "Weapons/ShooterAutoPickup.h"
 #include "Components/SceneComponent.h"
 #include "Components/SphereComponent.h"

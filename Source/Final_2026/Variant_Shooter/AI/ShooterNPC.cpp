@@ -1,8 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
-
 #include "Variant_Shooter/AI/ShooterNPC.h"
-#include "Final_2026.h"
 #include "Variant_Shooter/AI/ShooterAIController.h"
 #include "ShooterWeapon.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -35,8 +31,6 @@ void AShooterNPC::BeginPlay()
 		{
 			if (!IsValid(Controller))
 			{
-				UE_LOG(LogFinal_2026, Warning, TEXT("ShooterNPC %s had no controller on next tick. Spawning default."),
-				       *GetName());
 				SpawnDefaultController();
 			}
 		}));
@@ -56,21 +50,6 @@ void AShooterNPC::BeginPlay()
 		{
 			Weapon->ActivateWeapon();
 		}
-		else
-		{
-			UE_LOG(LogFinal_2026, Warning, TEXT("ShooterNPC %s failed to spawn weapon from class %s"), *GetName(),
-			       *GetNameSafe(WeaponClass));
-		}
-	}
-	else
-	{
-		UE_LOG(LogFinal_2026, Warning, TEXT("ShooterNPC %s has no WeaponClass assigned"), *GetName());
-	}
-
-	UE_LOG(LogFinal_2026, Log, TEXT("ShooterNPC BeginPlay - Controller valid: %s"), IsValid(GetController()) ? TEXT("true") : TEXT("false"));
-	if (IsValid(GetController()))
-	{
-		UE_LOG(LogFinal_2026, Log, TEXT("ShooterNPC BeginPlay - Controller: %s"), *GetController()->GetName());
 	}
 }
 
@@ -257,18 +236,10 @@ void AShooterNPC::StartShooting(AActor* ActorToShoot)
 	// raise the flag
 	bIsShooting = true;
 
-	UE_LOG(LogFinal_2026, Log, TEXT("ShooterNPC %s StartShooting target=%s weapon=%s"), *GetName(),
-	       IsValid(ActorToShoot) ? *ActorToShoot->GetName() : TEXT("None"),
-	       IsValid(Weapon) ? *Weapon->GetName() : TEXT("None"));
-
 	// signal the weapon
 	if (IsValid(Weapon))
 	{
 		Weapon->StartFiring();
-	}
-	else
-	{
-		UE_LOG(LogFinal_2026, Warning, TEXT("ShooterNPC %s cannot shoot because Weapon is invalid"), *GetName());
 	}
 }
 
@@ -276,8 +247,6 @@ void AShooterNPC::StopShooting()
 {
 	// lower the flag
 	bIsShooting = false;
-
-	UE_LOG(LogFinal_2026, Log, TEXT("ShooterNPC %s StopShooting"), *GetName());
 
 	// signal the weapon
 	if (IsValid(Weapon))

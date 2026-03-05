@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #pragma once
 
 #include "CoreMinimal.h"
@@ -24,4 +22,20 @@ public:
 	/** Shows final ending results at end of run. */
 	UFUNCTION(BlueprintImplementableEvent, Category="Shooter", meta=(DisplayName = "ShowEnding"))
 	void BP_ShowEnding(const FName& EndingId, const FText& EndingText, bool bWon);
+	
+	/** Updates interaction prompt near the crosshair. */
+	UFUNCTION(BlueprintImplementableEvent, Category="Shooter", meta=(DisplayName = "SetInteractionPrompt"))
+	void BP_SetInteractionPrompt(bool bVisible, const FText& ObjectName, const FText& HintText);
+
+	/** Updates current objective text. */
+	UFUNCTION(BlueprintImplementableEvent, Category="Shooter", meta=(DisplayName = "SetObjectiveText"))
+	void BP_SetObjectiveText(const FText& ObjectiveText);
+
+	/** Updates objective countdown timer in seconds. */
+	UFUNCTION(BlueprintImplementableEvent, Category="Shooter", meta=(DisplayName = "SetObjectiveTimer"))
+	void BP_SetObjectiveTimer(float RemainingTimeSeconds);
+
+	/** Updates run kill counter. */
+	UFUNCTION(BlueprintImplementableEvent, Category="Shooter", meta=(DisplayName = "SetKillCount"))
+	void BP_SetKillCount(int32 KillCount);
 };

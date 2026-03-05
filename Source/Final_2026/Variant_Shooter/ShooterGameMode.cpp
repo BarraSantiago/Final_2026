@@ -1,11 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
-
 #include "Variant_Shooter/ShooterGameMode.h"
 #include "Final_2026.h"
 #include "AI/ShooterNPC.h"
 #include "ShooterUI.h"
 #include "ShooterPlayerController.h"
+#include "Final_2026GameInstance.h"
 #include "Interaction/ShooterObjectiveDoor.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
@@ -16,6 +14,21 @@
 void AShooterGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (const UFinal_2026GameInstance* GameInstance = Cast<UFinal_2026GameInstance>(GetGameInstance()))
+	{
+		switch (GameInstance->GetSelectedShooterRunMode())
+		{
+		case EShooterRunMode::KeyEscape:
+			DoorUnlockMode = EShooterDoorUnlockMode::KeyPickup;
+			break;
+		case EShooterRunMode::Survival:
+			DoorUnlockMode = EShooterDoorUnlockMode::SurvivalTimer;
+			break;
+		default:
+			break;
+		}
+	}
 
 	UE_LOG(LogFinal_2026, Log, TEXT("ShooterGameMode BeginPlay. UnlockMode=%s RequiredKeyCount=%d"),
 	       DoorUnlockMode == EShooterDoorUnlockMode::KeyPickup ? TEXT("KeyPickup") : TEXT("SurvivalTimer"),
@@ -45,6 +58,7 @@ void AShooterGameMode::BeginPlay()
 	{
 		ShooterPC->SetKillCount(PlayerKillCount);
 	}
+	UpdateObjectiveScoreUI();
 
 	InitializeWaveSystem();
 }
@@ -68,12 +82,7 @@ void AShooterGameMode::IncrementTeamScore(uint8 TeamByte)
 	// increment the score for the given team
 	++Score;
 	TeamScores.Add(TeamByte, Score);
-
-	// update the UI
-	if (ShooterUI)
-	{
-		ShooterUI->BP_UpdateScore(TeamByte, Score);
-	}
+	UpdateObjectiveScoreUI();
 }
 
 void AShooterGameMode::RegisterObjectiveDoor(AShooterObjectiveDoor* InDoor)
@@ -110,6 +119,7 @@ void AShooterGameMode::NotifyObjectiveKeyCollected()
 	}
 	else
 	{
+		UpdateObjectiveScoreUI();
 		UpdateObjectiveText();
 	}
 }
@@ -133,6 +143,9 @@ void AShooterGameMode::NotifyEnemyKilled(AController* KillerController)
 	{
 		ShooterPC->SetKillCount(PlayerKillCount);
 	}
+
+	UpdateObjectiveScoreUI();
+	UpdateObjectiveText();
 }
 
 void AShooterGameMode::NotifyPlayerDied()
@@ -178,6 +191,44 @@ void AShooterGameMode::RequestEscape(APawn* EscapingPawn)
 	EndRun(EndingId, BuildEndingDescription(EndingId), true);
 }
 
+int32 AShooterGameMode::ResolveNextKillObjective() const
+{
+	TArray<int32> KillTargets;
+	KillTargets.Add(FMath::Max(1, FinalAMaxKills + 1));
+	KillTargets.Add(FMath::Max(1, FinalBMaxKills + 1));
+	KillTargets.Add(FMath::Max(1, FinalCMinKills));
+	KillTargets.Sort();
+
+	for (const int32 KillTarget : KillTargets)
+	{
+		if (PlayerKillCount < KillTarget)
+		{
+			return KillTarget;
+		}
+	}
+
+	return PlayerKillCount;
+}
+
+void AShooterGameMode::UpdateObjectiveScoreUI()
+{
+	if (!IsValid(ShooterUI))
+	{
+		return;
+	}
+
+	if (DoorUnlockMode == EShooterDoorUnlockMode::KeyPickup)
+	{
+		// Reuse score slots to show key objective progress instead of combat score.
+		ShooterUI->BP_UpdateScore(0, CurrentKeyCount);
+		ShooterUI->BP_UpdateScore(1, RequiredKeyCount);
+		return;
+	}
+
+	ShooterUI->BP_UpdateScore(0, PlayerKillCount);
+	ShooterUI->BP_UpdateScore(1, ResolveNextKillObjective());
+}
+
 void AShooterGameMode::UpdateObjectiveText()
 {
 	APlayerController* PlayerController = UGameplayStatics::GetPlayerController(GetWorld(), 0);
@@ -194,23 +245,42 @@ void AShooterGameMode::UpdateObjectiveText()
 
 	if (bDoorUnlocked)
 	{
-		ShooterPC->SetObjectiveText(
-			FText::FromString(TEXT("Door unlocked. Escape now or keep fighting for a better ending.")));
+		ShooterPC->SetObjectiveText(FText::FromString(TEXT("Find the door.")));
 		return;
 	}
 
 	if (DoorUnlockMode == EShooterDoorUnlockMode::KeyPickup)
 	{
-		const FText ObjectiveText = FText::Format(
-			FText::FromString(
-				TEXT("Find Key_asset_0001 to unlock the Unassuming Wooden Door of Ultimate Destiny. ({0}/{1})")),
-			FText::AsNumber(CurrentKeyCount),
-			FText::AsNumber(RequiredKeyCount));
+		FText ObjectiveText = FText::FromString(TEXT("Grab the key."));
+		if (RequiredKeyCount > 1)
+		{
+			ObjectiveText = FText::Format(
+				FText::FromString(TEXT("Grab the key. ({0}/{1})")),
+				FText::AsNumber(CurrentKeyCount),
+				FText::AsNumber(RequiredKeyCount));
+		}
+
 		ShooterPC->SetObjectiveText(ObjectiveText);
 		return;
 	}
 
-	ShooterPC->SetObjectiveText(FText::FromString(TEXT("Survive until the door unlocks.")));
+	const int32 NextKillObjective = ResolveNextKillObjective();
+	FText ObjectiveText;
+	if (NextKillObjective > PlayerKillCount)
+	{
+		ObjectiveText = FText::Format(
+			FText::FromString(TEXT("Survive. Kills: {0}. Next objective: {1} kills.")),
+			FText::AsNumber(PlayerKillCount),
+			FText::AsNumber(NextKillObjective));
+	}
+	else
+	{
+		ObjectiveText = FText::Format(
+			FText::FromString(TEXT("Survive. Kills: {0}. Final kill objective reached.")),
+			FText::AsNumber(PlayerKillCount));
+	}
+
+	ShooterPC->SetObjectiveText(ObjectiveText);
 }
 
 void AShooterGameMode::UpdateSurvivalCountdown()
@@ -260,6 +330,7 @@ void AShooterGameMode::UnlockDoor()
 		ShooterPC->SetObjectiveTimer(0.0f);
 	}
 
+	UpdateObjectiveScoreUI();
 	UpdateObjectiveText();
 }
 
@@ -429,13 +500,7 @@ void AShooterGameMode::StartNextWave()
 	SpawnedEnemiesThisWave = 0;
 	bIsSpawningWave = true;
 
-	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(
-		UGameplayStatics::GetPlayerController(GetWorld(), 0)))
-	{
-		ShooterPC->SetObjectiveText(FText::Format(
-			FText::FromString(TEXT("Wave {0} started.")),
-			FText::AsNumber(CurrentWave)));
-	}
+	UpdateObjectiveText();
 
 	if (TimeBetweenEnemySpawns <= 0.0f)
 	{
@@ -526,14 +591,7 @@ void AShooterGameMode::TryScheduleNextWave()
 		return;
 	}
 
-	if (AShooterPlayerController* ShooterPC = Cast<AShooterPlayerController>(
-		UGameplayStatics::GetPlayerController(GetWorld(), 0)))
-	{
-		ShooterPC->SetObjectiveText(FText::Format(
-			FText::FromString(TEXT("Wave {0} almost cleared. Next wave in {1}s.")),
-			FText::AsNumber(CurrentWave),
-			FText::AsNumber(FMath::RoundToInt(TimeBetweenWaves))));
-	}
+	UpdateObjectiveText();
 
 	if (TimeBetweenWaves <= 0.0f)
 	{

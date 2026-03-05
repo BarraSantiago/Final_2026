@@ -9,7 +9,9 @@
 #include "GameFramework/PlayerStart.h"
 #include "ShooterCharacter.h"
 #include "ShooterBulletCounterUI.h"
+#include "MainMenu/MainMenuUI.h"
 #include "ShooterGameMode.h"
+#include "Final_2026GameInstance.h"
 #include "Final_2026.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -66,6 +68,14 @@ void AShooterPlayerController::BeginPlay()
 		bShowMouseCursor = false;
 		SetIgnoreMoveInput(false);
 		SetIgnoreLookInput(false);
+
+		if (const UFinal_2026GameInstance* GameInstance = Cast<UFinal_2026GameInstance>(GetGameInstance()))
+		{
+			if (GameInstance->GetSelectedShooterRunMode() == EShooterRunMode::None && ShouldShowMainMenuOnCurrentLevel())
+			{
+				ShowMainMenu();
+			}
+		}
 	}
 }
 
@@ -104,6 +114,14 @@ void AShooterPlayerController::OnPossess(APawn* InPawn)
 	// Ensure gameplay input is restored when re-possessing after a respawn.
 	HideDeathMenu();
 	HideWinMenu();
+
+	if (const UFinal_2026GameInstance* GameInstance = Cast<UFinal_2026GameInstance>(GetGameInstance()))
+	{
+		if (GameInstance->GetSelectedShooterRunMode() == EShooterRunMode::None && ShouldShowMainMenuOnCurrentLevel())
+		{
+			ShowMainMenu();
+		}
+	}
 
 	// subscribe to the pawn's OnDestroyed delegate
 	InPawn->OnDestroyed.AddDynamic(this, &AShooterPlayerController::OnPawnDestroyed);
@@ -191,15 +209,135 @@ void AShooterPlayerController::OnInteractionPromptUpdated(bool bVisible, FText O
 {
 	if (IsValid(BulletCounterUI))
 	{
-		BulletCounterUI->BP_SetInteractionPrompt(bVisible, ObjectName, HintText);
+		PlayerUI->BP_SetInteractionPrompt(bVisible, ObjectName, HintText);
 	}
+}
+
+bool AShooterPlayerController::ShouldShowMainMenuOnCurrentLevel() const
+{
+	// Backward-compatible fallback: old projects may still have "MainMenu" configured but no map with that name.
+	if (MainMenuLevelName == FName("MainMenu"))
+	{
+		return true;
+	}
+
+	if (MainMenuLevelName.IsNone())
+	{
+		return false;
+	}
+
+	const FString CurrentLevelName = UGameplayStatics::GetCurrentLevelName(this, true);
+	return CurrentLevelName.Equals(MainMenuLevelName.ToString(), ESearchCase::IgnoreCase);
+}
+
+void AShooterPlayerController::ShowMainMenu()
+{
+	if (!IsLocalPlayerController())
+	{
+		return;
+	}
+
+	HideDeathMenu();
+	HideWinMenu();
+
+	if (!IsValid(MainMenuUI))
+	{
+		const TSubclassOf<UMainMenuUI> MenuClass =  MainMenuUIClass;// ? MainMenuUIClass : UMainMenuUI::StaticClass();
+		MainMenuUI = CreateWidget<UMainMenuUI>(this, MenuClass);
+	}
+
+	if (!IsValid(MainMenuUI))
+	{
+		return;
+	}
+
+	MainMenuUI->OnKeyEscapeSelected.RemoveDynamic(this, &AShooterPlayerController::HandleKeyEscapeSelected);
+	MainMenuUI->OnKeyEscapeSelected.AddDynamic(this, &AShooterPlayerController::HandleKeyEscapeSelected);
+
+	MainMenuUI->OnSurvivalSelected.RemoveDynamic(this, &AShooterPlayerController::HandleSurvivalSelected);
+	MainMenuUI->OnSurvivalSelected.AddDynamic(this, &AShooterPlayerController::HandleSurvivalSelected);
+
+	if (!MainMenuUI->IsInViewport())
+	{
+		MainMenuUI->AddToViewport(200);
+	}
+
+	if (IsValid(BulletCounterUI))
+	{
+		BulletCounterUI->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	FInputModeUIOnly InputMode;
+	InputMode.SetWidgetToFocus(MainMenuUI->TakeWidget());
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+
+	SetInputMode(InputMode);
+	bShowMouseCursor = true;
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+	SetPause(true);
+}
+
+void AShooterPlayerController::HideMainMenu()
+{
+	if (IsValid(MainMenuUI))
+	{
+		MainMenuUI->RemoveFromParent();
+	}
+
+	if (IsValid(BulletCounterUI))
+	{
+		BulletCounterUI->SetVisibility(ESlateVisibility::Visible);
+	}
+
+	FInputModeGameOnly InputMode;
+	SetInputMode(InputMode);
+	bShowMouseCursor = false;
+	SetIgnoreMoveInput(false);
+	SetIgnoreLookInput(false);
+	SetPause(false);
+}
+
+void AShooterPlayerController::StartSelectedRun(const EShooterRunMode SelectedMode, const FName TargetLevelName)
+{
+	if (TargetLevelName.IsNone())
+	{
+		return;
+	}
+
+	if (UFinal_2026GameInstance* GameInstance = Cast<UFinal_2026GameInstance>(GetGameInstance()))
+	{
+		GameInstance->SetSelectedShooterRunMode(SelectedMode);
+	}
+
+	HideMainMenu();
+	HideDeathMenu();
+	HideWinMenu();
+
+	FString OpenLevelOptions;
+	if (!GameplayGameModeOverride.IsEmpty())
+	{
+		OpenLevelOptions = FString::Printf(TEXT("game=%s"), *GameplayGameModeOverride);
+	}
+
+	UGameplayStatics::OpenLevel(this, TargetLevelName, true, OpenLevelOptions);
+}
+
+void AShooterPlayerController::HandleKeyEscapeSelected()
+{
+	StartSelectedRun(EShooterRunMode::KeyEscape, KeyEscapeLevelName);
+}
+
+void AShooterPlayerController::HandleSurvivalSelected()
+{
+	StartSelectedRun(EShooterRunMode::Survival, SurvivalLevelName);
 }
 
 void AShooterPlayerController::SetObjectiveText(const FText& ObjectiveText)
 {
 	if (IsValid(BulletCounterUI))
 	{
-		BulletCounterUI->BP_SetObjectiveText(ObjectiveText);
+		PlayerUI->BP_SetObjectiveText(ObjectiveText);
 	}
 }
 
@@ -207,7 +345,7 @@ void AShooterPlayerController::SetObjectiveTimer(float RemainingTimeSeconds)
 {
 	if (IsValid(BulletCounterUI))
 	{
-		BulletCounterUI->BP_SetObjectiveTimer(RemainingTimeSeconds);
+		PlayerUI->BP_SetObjectiveTimer(RemainingTimeSeconds);
 	}
 }
 
@@ -215,7 +353,7 @@ void AShooterPlayerController::SetKillCount(int32 KillCount)
 {
 	if (IsValid(BulletCounterUI))
 	{
-		BulletCounterUI->BP_SetKillCount(KillCount);
+		PlayerUI->BP_SetKillCount(KillCount);
 	}
 }
 
@@ -342,16 +480,28 @@ void AShooterPlayerController::RestartCurrentLevel()
 
 void AShooterPlayerController::ReturnToMainMenu()
 {
+	if (UFinal_2026GameInstance* GameInstance = Cast<UFinal_2026GameInstance>(GetGameInstance()))
+	{
+		GameInstance->SetSelectedShooterRunMode(EShooterRunMode::None);
+	}
+
+	HideMainMenu();
 	HideDeathMenu();
 	HideWinMenu();
 
-	if (MainMenuLevelName.IsNone())
+	FName TargetMenuLevel = MainMenuLevelName;
+	if (TargetMenuLevel.IsNone() || TargetMenuLevel == FName("MainMenu"))
 	{
-		UE_LOG(LogFinal_2026, Warning, TEXT("MainMenuLevelName is not set."));
+		TargetMenuLevel = KeyEscapeLevelName;
+	}
+
+	if (TargetMenuLevel.IsNone())
+	{
+		UE_LOG(LogFinal_2026, Warning, TEXT("No valid level configured for ReturnToMainMenu."));
 		return;
 	}
 
-	UGameplayStatics::OpenLevel(this, MainMenuLevelName, true);
+	UGameplayStatics::OpenLevel(this, TargetMenuLevel, true);
 }
 
 void AShooterPlayerController::QuitToDesktop()

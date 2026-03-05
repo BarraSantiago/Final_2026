@@ -1,6 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
-
 #include "Interaction/ShooterObjectiveDoor.h"
 #include "Final_2026.h"
 #include "Components/SceneComponent.h"

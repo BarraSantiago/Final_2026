@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #pragma once
 
 #include "CoreMinimal.h"
@@ -193,6 +191,12 @@ public:
 	bool ShouldRespawnPlayerOnDeath() const { return bRespawnPlayerOnDeath; }
 
 protected:
+
+	/** Resolves the next kill threshold to display as objective progress. */
+	int32 ResolveNextKillObjective() const;
+
+	/** Pushes objective-oriented numbers to the score widget. */
+	void UpdateObjectiveScoreUI();
 
 	/** Recomputes and pushes objective text to the player's HUD. */
 	void UpdateObjectiveText();

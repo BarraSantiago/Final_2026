@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Final_2026.h"
 #include "Modules/ModuleManager.h"
 

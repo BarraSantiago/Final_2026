@@ -1,6 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
-
 #include "Interaction/ShooterToggleInteractable.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"

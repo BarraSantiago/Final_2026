@@ -1,6 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
-
 #include "ShooterCharacter.h"
 #include "Final_2026.h"
 #include "ShooterWeapon.h"
