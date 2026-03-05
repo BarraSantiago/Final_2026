@@ -9,7 +9,7 @@
 
 namespace
 {
-FString BuildGameModeTravelOption(const FString& RawGameModePath)
+FString BuildMainMenuGameModeTravelOption(const FString& RawGameModePath)
 {
 	FString Path = RawGameModePath.TrimStartAndEnd();
 	if (Path.IsEmpty())
@@ -19,7 +19,7 @@ FString BuildGameModeTravelOption(const FString& RawGameModePath)
 
 	if (Path.StartsWith(TEXT("Game="), ESearchCase::IgnoreCase))
 	{
-		Path.RightChopInline(5, false);
+		Path.RightChopInline(5, EAllowShrinking::No);
 	}
 
 	if (Path.StartsWith(TEXT("Class'")) && Path.EndsWith(TEXT("'")))
@@ -33,7 +33,7 @@ FString BuildGameModeTravelOption(const FString& RawGameModePath)
 		const int32 DuplicateIdx = Path.Find(TEXT("/Game/"), ESearchCase::IgnoreCase, ESearchDir::FromStart, 1);
 		if (DuplicateIdx != INDEX_NONE)
 		{
-			Path.RightChopInline(DuplicateIdx, false);
+			Path.RightChopInline(DuplicateIdx, EAllowShrinking::No);
 		}
 
 		if (Path.Contains(TEXT(".")) && !Path.EndsWith(TEXT("_C")))
@@ -113,7 +113,7 @@ void AMainMenuPlayerController::LaunchSelectedRun(const EShooterRunMode Selected
 	SetIgnoreLookInput(false);
 	SetPause(false);
 
-	const FString OpenLevelOptions = BuildGameModeTravelOption(GameplayGameModeOverride);
+	const FString OpenLevelOptions = BuildMainMenuGameModeTravelOption(GameplayGameModeOverride);
 
 	UGameplayStatics::OpenLevel(this, TargetLevelName, true, OpenLevelOptions);
 }

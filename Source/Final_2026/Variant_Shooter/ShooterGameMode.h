@@ -66,9 +66,17 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Shooter|Player Death")
 	bool bRespawnPlayerOnDeath = false;
 
-	/** Enables wave spawning for AI enemies. */
+	/** Master toggle for wave spawning. */
 	UPROPERTY(EditAnywhere, Category="Waves")
 	bool bEnableWaveSystem = true;
+
+	/** If true, waves are allowed during Survival mode runs. */
+	UPROPERTY(EditAnywhere, Category="Waves", meta=(EditCondition="bEnableWaveSystem"))
+	bool bEnableWaveSystemInSurvivalMode = true;
+
+	/** If true, waves are allowed during Key Escape mode runs. */
+	UPROPERTY(EditAnywhere, Category="Waves", meta=(EditCondition="bEnableWaveSystem"))
+	bool bEnableWaveSystemInKeyEscapeMode = false;
 
 	/** Enemy class used by the wave spawner. */
 	UPROPERTY(EditAnywhere, Category="Waves", meta=(EditCondition="bEnableWaveSystem"))
@@ -146,6 +154,9 @@ protected:
 
 	/** True while current wave is still being spawned. */
 	bool bIsSpawningWave = false;
+
+	/** True when wave system is enabled for the current run mode. */
+	bool bWaveSystemEnabledForCurrentRun = false;
 
 	/** Timer used to start the next wave. */
 	FTimerHandle NextWaveTimerHandle;

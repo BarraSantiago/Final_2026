@@ -18,7 +18,7 @@
 
 namespace
 {
-FString BuildGameModeTravelOption(const FString& RawGameModePath)
+FString BuildShooterGameModeTravelOption(const FString& RawGameModePath)
 {
 	FString Path = RawGameModePath.TrimStartAndEnd();
 	if (Path.IsEmpty())
@@ -28,7 +28,7 @@ FString BuildGameModeTravelOption(const FString& RawGameModePath)
 
 	if (Path.StartsWith(TEXT("Game="), ESearchCase::IgnoreCase))
 	{
-		Path.RightChopInline(5, false);
+		Path.RightChopInline(5, EAllowShrinking::No);
 	}
 
 	if (Path.StartsWith(TEXT("Class'")) && Path.EndsWith(TEXT("'")))
@@ -41,7 +41,7 @@ FString BuildGameModeTravelOption(const FString& RawGameModePath)
 		const int32 DuplicateIdx = Path.Find(TEXT("/Game/"), ESearchCase::IgnoreCase, ESearchDir::FromStart, 1);
 		if (DuplicateIdx != INDEX_NONE)
 		{
-			Path.RightChopInline(DuplicateIdx, false);
+			Path.RightChopInline(DuplicateIdx, EAllowShrinking::No);
 		}
 
 		if (Path.Contains(TEXT(".")) && !Path.EndsWith(TEXT("_C")))
@@ -397,7 +397,7 @@ void AShooterPlayerController::ReturnToMainMenu()
 
 	//UWidgetBlueprintLibrary::RemoveAllWidgets(this);
 
-	const FString OpenLevelOptions = BuildGameModeTravelOption(MainMenuGameModeOverride);
+	const FString OpenLevelOptions = BuildShooterGameModeTravelOption(MainMenuGameModeOverride);
 
 	UGameplayStatics::OpenLevel(this, MainMenuLevelName, true, OpenLevelOptions);
 }

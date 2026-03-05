@@ -3,6 +3,7 @@
 #include "ShooterWeapon.h"
 #include "Interaction/ShooterInteractable.h"
 #include "EnhancedInputComponent.h"
+#include "Final_2026GameInstance.h"
 #include "Components/InputComponent.h"
 #include "Components/PawnNoiseEmitterComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -29,7 +30,20 @@ void AShooterCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	MaxHP = ArchetypeStats.MaxHealth;
-
+	if (const UFinal_2026GameInstance* GameInstance = Cast<UFinal_2026GameInstance>(GetGameInstance()))
+	{
+		switch (GameInstance->GetSelectedShooterRunMode())
+		{
+		case EShooterRunMode::None:
+			break;
+		case EShooterRunMode::KeyEscape:
+			MaxHP *= 0.75f;
+			break;
+		case EShooterRunMode::Survival:
+			MaxHP *= 5;
+			break;
+		}
+	}
 	// reset HP to max
 	CurrentHP = MaxHP;
 	GetCharacterMovement()->MaxWalkSpeed = ArchetypeStats.MoveSpeed;
@@ -65,34 +79,39 @@ void AShooterCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		// Firing
 		if (FireAction)
 		{
-			EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &AShooterCharacter::DoStartFiring);
-			EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Completed, this, &AShooterCharacter::DoStopFiring);
+			EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this,
+			                                   &AShooterCharacter::DoStartFiring);
+			EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Completed, this,
+			                                   &AShooterCharacter::DoStopFiring);
 		}
 
 		// Switch weapon
 		if (SwitchWeaponAction)
 		{
-			EnhancedInputComponent->BindAction(SwitchWeaponAction, ETriggerEvent::Triggered, this, &AShooterCharacter::DoSwitchWeapon);
+			EnhancedInputComponent->BindAction(SwitchWeaponAction, ETriggerEvent::Triggered, this,
+			                                   &AShooterCharacter::DoSwitchWeapon);
 		}
 
 		// Reload weapon
 		if (ReloadAction)
 		{
-			EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &AShooterCharacter::DoReload);
+			EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this,
+			                                   &AShooterCharacter::DoReload);
 		}
 
 		if (InteractAction)
 		{
-			EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &AShooterCharacter::DoInteract);
+			EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this,
+			                                   &AShooterCharacter::DoInteract);
 		}
 	}
 
 	// Fallback for projects that haven't set a dedicated reload Input Action yet.
 	PlayerInputComponent->BindKey(EKeys::R, IE_Pressed, this, &AShooterCharacter::DoReload);
-
 }
 
-float AShooterCharacter::TakeDamage(float Damage, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+float AShooterCharacter::TakeDamage(float Damage, struct FDamageEvent const& DamageEvent, AController* EventInstigator,
+                                    AActor* DamageCauser)
 {
 	// ignore if already dead
 	if (CurrentHP <= 0.0f)
@@ -150,7 +169,8 @@ void AShooterCharacter::DoSwitchWeapon()
 			// loop back to the beginning of the array
 			WeaponIndex = 0;
 		}
-		else {
+		else
+		{
 			// select the next weapon index
 			++WeaponIndex;
 		}
@@ -266,12 +286,10 @@ void AShooterCharacter::AttachWeaponMeshes(AShooterWeapon* Weapon)
 	// attach the weapon meshes
 	Weapon->GetFirstPersonMesh()->AttachToComponent(GetFirstPersonMesh(), AttachmentRule, FirstPersonWeaponSocket);
 	Weapon->GetThirdPersonMesh()->AttachToComponent(GetMesh(), AttachmentRule, ThirdPersonWeaponSocket);
-	
 }
 
 void AShooterCharacter::PlayFiringMontage(UAnimMontage* Montage)
 {
-	
 }
 
 void AShooterCharacter::AddWeaponRecoil(float Recoil)
@@ -321,7 +339,8 @@ void AShooterCharacter::AddWeaponClass(const TSubclassOf<AShooterWeapon>& Weapon
 		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		SpawnParams.TransformScaleMethod = ESpawnActorScaleMethod::MultiplyWithRoot;
 
-		AShooterWeapon* AddedWeapon = GetWorld()->SpawnActor<AShooterWeapon>(WeaponClass, GetActorTransform(), SpawnParams);
+		AShooterWeapon* AddedWeapon = GetWorld()->SpawnActor<AShooterWeapon>(
+			WeaponClass, GetActorTransform(), SpawnParams);
 
 		if (AddedWeapon)
 		{
@@ -374,7 +393,6 @@ AShooterWeapon* AShooterCharacter::FindWeaponOfType(TSubclassOf<AShooterWeapon> 
 
 	// weapon not found
 	return nullptr;
-
 }
 
 AShooterWeapon* AShooterCharacter::FindWeaponBySlot(EShooterWeaponSlot Slot) const
@@ -458,7 +476,7 @@ void AShooterCharacter::Die()
 			bShouldScheduleRespawn = GM->ShouldRespawnPlayerOnDeath();
 		}
 	}
-		
+
 	// stop character movement
 	GetCharacterMovement()->StopMovementImmediately();
 

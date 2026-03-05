@@ -15,9 +15,11 @@ void AShooterGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 
+	EShooterRunMode SelectedRunMode = EShooterRunMode::None;
 	if (const UFinal_2026GameInstance* GameInstance = Cast<UFinal_2026GameInstance>(GetGameInstance()))
 	{
-		switch (GameInstance->GetSelectedShooterRunMode())
+		SelectedRunMode = GameInstance->GetSelectedShooterRunMode();
+		switch (SelectedRunMode)
 		{
 		case EShooterRunMode::KeyEscape:
 			DoorUnlockMode = EShooterDoorUnlockMode::KeyPickup;
@@ -29,6 +31,11 @@ void AShooterGameMode::BeginPlay()
 			break;
 		}
 	}
+
+	// Apply per-mode wave toggle, with the master toggle still acting as global override.
+	const bool bIsKeyEscapeMode = DoorUnlockMode == EShooterDoorUnlockMode::KeyPickup;
+	const bool bModeAllowsWaves = bIsKeyEscapeMode ? bEnableWaveSystemInKeyEscapeMode : bEnableWaveSystemInSurvivalMode;
+	bWaveSystemEnabledForCurrentRun = bEnableWaveSystem && bModeAllowsWaves;
 
 	UE_LOG(LogFinal_2026, Log, TEXT("ShooterGameMode BeginPlay. UnlockMode=%s RequiredKeyCount=%d"),
 	       DoorUnlockMode == EShooterDoorUnlockMode::KeyPickup ? TEXT("KeyPickup") : TEXT("SurvivalTimer"),
@@ -126,7 +133,7 @@ void AShooterGameMode::NotifyObjectiveKeyCollected()
 
 void AShooterGameMode::NotifyEnemyKilled(AController* KillerController)
 {
-	if (!bQuestEnded && bEnableWaveSystem)
+	if (!bQuestEnded && bWaveSystemEnabledForCurrentRun)
 	{
 		AliveEnemyCount = FMath::Max(0, AliveEnemyCount - 1);
 		TryScheduleNextWave();
@@ -401,7 +408,7 @@ FText AShooterGameMode::BuildEndingDescription(const FName& EndingId) const
 
 void AShooterGameMode::InitializeWaveSystem()
 {
-	if (!bEnableWaveSystem)
+	if (!bWaveSystemEnabledForCurrentRun)
 	{
 		return;
 	}
@@ -488,7 +495,7 @@ void AShooterGameMode::InitializeWaveSystem()
 
 void AShooterGameMode::StartNextWave()
 {
-	if (bQuestEnded || !bEnableWaveSystem || !WaveEnemyClass || EnemySpawnPointTransforms.Num() == 0)
+	if (bQuestEnded || !bWaveSystemEnabledForCurrentRun || !WaveEnemyClass || EnemySpawnPointTransforms.Num() == 0)
 	{
 		return;
 	}
@@ -528,7 +535,7 @@ void AShooterGameMode::StartNextWave()
 
 void AShooterGameMode::SpawnOneWaveEnemy()
 {
-	if (bQuestEnded || !bEnableWaveSystem || !WaveEnemyClass || EnemySpawnPointTransforms.Num() == 0)
+	if (bQuestEnded || !bWaveSystemEnabledForCurrentRun || !WaveEnemyClass || EnemySpawnPointTransforms.Num() == 0)
 	{
 		StopWaveSystem();
 		return;
@@ -569,7 +576,7 @@ void AShooterGameMode::SpawnOneWaveEnemy()
 
 void AShooterGameMode::TryScheduleNextWave()
 {
-	if (bQuestEnded || !bEnableWaveSystem || bIsSpawningWave || CurrentWave <= 0)
+	if (bQuestEnded || !bWaveSystemEnabledForCurrentRun || bIsSpawningWave || CurrentWave <= 0)
 	{
 		return;
 	}
