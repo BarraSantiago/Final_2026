@@ -1,6 +1,8 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "MainMenu/MainMenuPlayerController.h"
+
+#include "Final_2026.h"
 #include "Final_2026GameInstance.h"
 #include "MainMenu/MainMenuUI.h"
 #include "Kismet/GameplayStatics.h"
@@ -56,6 +58,7 @@ void AMainMenuPlayerController::BeginPlay()
 	}
 
 	MainMenuUI = CreateWidget<UMainMenuUI>(this, MainMenuUIClass);
+	UE_LOG(LogFinal_2026, Log, TEXT("MainMenuPlayerController created MainMenuUI: %s"), IsValid(MainMenuUI) ? *MainMenuUI->GetName() : TEXT("None"));
 	if (!IsValid(MainMenuUI))
 	{
 		return;
