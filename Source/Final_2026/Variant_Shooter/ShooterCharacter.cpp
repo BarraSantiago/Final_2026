@@ -37,7 +37,7 @@ void AShooterCharacter::BeginPlay()
 		case EShooterRunMode::None:
 			break;
 		case EShooterRunMode::KeyEscape:
-			MaxHP *= 0.75f;
+			MaxHP *= 1.25f;
 			break;
 		case EShooterRunMode::Survival:
 			MaxHP *= 5;
