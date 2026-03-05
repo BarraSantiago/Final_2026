@@ -23,6 +23,7 @@ public class Final_2026 : ModuleRules
 
 		PublicIncludePaths.AddRange(new string[] {
 			"Final_2026",
+			"Final_2026/MainMenu",
 			"Final_2026/Variant_Horror",
 			"Final_2026/Variant_Horror/UI",
 			"Final_2026/Variant_Shooter",

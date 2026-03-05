@@ -10,9 +10,7 @@
 class UInputMappingContext;
 class AShooterCharacter;
 class UShooterBulletCounterUI;
-class UMainMenuUI;
 class UUserWidget;
-enum class EShooterRunMode : uint8;
 
 /**
  *  Simple PlayerController for a first person shooter game
@@ -57,25 +55,13 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Shooter|UI")
 	TSubclassOf<UUserWidget> WinMenuUIClass;
 
-	/** Type of main menu widget to spawn when no run mode has been selected yet. */
-	UPROPERTY(EditAnywhere, Category="Shooter|Main Menu")
-	TSubclassOf<UMainMenuUI> MainMenuUIClass;
-
 	/** Level name used by the death menu "Main Menu" action. */
 	UPROPERTY(EditAnywhere, Category="Shooter|UI")
-	FName MainMenuLevelName = FName("Lvl_Shooter");
+	FName MainMenuLevelName = FName("MainMenu");
 
-	/** Target level to load for key + escape mode. */
+	/** Optional game mode override passed through OpenLevel options when returning to menu. */
 	UPROPERTY(EditAnywhere, Category="Shooter|Main Menu")
-	FName KeyEscapeLevelName = FName("Lvl_Shooter");
-
-	/** Target level to load for survival mode. */
-	UPROPERTY(EditAnywhere, Category="Shooter|Main Menu")
-	FName SurvivalLevelName = FName("Lvl_FirstPerson");
-
-	/** Optional game mode override passed through OpenLevel options when launching a run. */
-	UPROPERTY(EditAnywhere, Category="Shooter|Main Menu")
-	FString GameplayGameModeOverride = TEXT("/Game/Variant_Shooter/Blueprints/BP_ShooterGameMode.BP_ShooterGameMode_C");
+	FString MainMenuGameModeOverride = TEXT("/Game/MainMenu/MenuGameMode.MenuGameMode_C");
 
 	/** Tag to grant the possessed pawn to flag it as the player */
 	UPROPERTY(EditAnywhere, Category="Shooter|Player")
@@ -86,7 +72,6 @@ protected:
 	TObjectPtr<UShooterUI> PlayerUI;
 	TObjectPtr<UUserWidget> DeathMenuUI;
 	TObjectPtr<UUserWidget> WinMenuUI;
-	TObjectPtr<UMainMenuUI> MainMenuUI;
 
 protected:
 
@@ -114,24 +99,6 @@ protected:
 	/** Called when interaction prompt visibility/content changes. */
 	UFUNCTION()
 	void OnInteractionPromptUpdated(bool bVisible, FText ObjectName, FText HintText);
-
-	/** Returns true when this level should show the main menu overlay. */
-	bool ShouldShowMainMenuOnCurrentLevel() const;
-
-	/** Opens the main menu overlay and switches input to UI mode. */
-	void ShowMainMenu();
-
-	/** Hides the main menu overlay and restores gameplay input mode. */
-	void HideMainMenu();
-
-	/** Shared launcher for both main menu options. */
-	void StartSelectedRun(EShooterRunMode SelectedMode, FName TargetLevelName);
-
-	UFUNCTION()
-	void HandleKeyEscapeSelected();
-
-	UFUNCTION()
-	void HandleSurvivalSelected();
 
 public:
 

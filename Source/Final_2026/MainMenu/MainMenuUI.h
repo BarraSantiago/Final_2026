@@ -6,12 +6,11 @@
 #include "Blueprint/UserWidget.h"
 #include "MainMenuUI.generated.h"
 
-class UButton;
-
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FMainMenuSelectedDelegate);
 
 /**
- * Runtime-built main menu widget with mode selection buttons.
+ * Blueprint-driven main menu widget.
+ * Button clicks should call the Notify* functions below.
  */
 UCLASS()
 class FINAL_2026_API UMainMenuUI : public UUserWidget
@@ -26,21 +25,21 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Main Menu")
 	FMainMenuSelectedDelegate OnSurvivalSelected;
 
-protected:
+	UPROPERTY(BlueprintAssignable, Category = "Main Menu")
+	FMainMenuSelectedDelegate OnOptionsSelected;
 
-	virtual void NativeConstruct() override;
+	UPROPERTY(BlueprintAssignable, Category = "Main Menu")
+	FMainMenuSelectedDelegate OnQuitSelected;
 
-	UFUNCTION()
-	void HandleKeyEscapeClicked();
+	UFUNCTION(BlueprintCallable, Category = "Main Menu")
+	void NotifyKeyEscapeSelected();
 
-	UFUNCTION()
-	void HandleSurvivalClicked();
+	UFUNCTION(BlueprintCallable, Category = "Main Menu")
+	void NotifySurvivalSelected();
 
-	void BuildRuntimeMenu();
+	UFUNCTION(BlueprintCallable, Category = "Main Menu")
+	void NotifyOptionsSelected();
 
-	UPROPERTY(Transient)
-	TObjectPtr<UButton> KeyEscapeButton;
-
-	UPROPERTY(Transient)
-	TObjectPtr<UButton> SurvivalButton;
+	UFUNCTION(BlueprintCallable, Category = "Main Menu")
+	void NotifyQuitSelected();
 };
